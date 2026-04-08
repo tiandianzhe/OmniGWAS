@@ -79,49 +79,18 @@ OmniGWAS/
 ├── README.md                    # Main project README
 ├── LICENSE                      # MIT License
 ├── docs/                        # Project-wide documentation
-├── analysis/                    # Analysis code (5 categories)
-│   ├── 01_basic_gwas/          # Basic GWAS analysis
-│   ├── 02_multiomics_gwas/     # Multi-omics GWAS
-│   ├── 03_singlecell_gwas/     # Single-cell GWAS
-│   ├── 04_comorbidity_gwas/    # Comorbidity GWAS
-│   └── 05_auxiliary_tools/     # Auxiliary tools
-├── utils/                       # Utility scripts and helpers
 ├── data/                        # Example datasets
-├── convert_supergnova/          # [Module] SuperGNOVA TXT to CSV converter
-│   ├── src/                     # Source code
-│   ├── tests/                   # Unit tests
-│   ├── example/                 # Example input/output files
-│   └── docs/                    # Module documentation
-├── manhattan_plot/              # [Module] Manhattan plot and QQ plot visualization
-│   ├── R/                      # R source code
-│   ├── src/                    # Python wrapper
-│   ├── tests/                  # Unit tests
-│   ├── example/                # Example input/output files
-│   └── docs/                   # Module documentation
-├── batch_gsmap/                 # [Module] Batch gsMap spatial transcriptomics colocalization
-│   ├── R/                     # R source code
-│   ├── src/                   # Python wrapper
-│   ├── example/               # Example configuration files
-│   └── docs/                  # Module documentation
-├── batch_smr_dynamic/          # [Module] Batch SMR dynamic immune single-cell analysis
-│   ├── R/                    # R source code
-│   ├── src/                  # Python wrapper
-│   ├── example/              # Example configuration files
-│   └── docs/                  # Module documentation
-├── utils/                      # [Module] Auxiliary data processing tools
-│   ├── R/                    # R source code (7 sub-modules)
-│   │   ├── read_table.R     # Data reading functions
-│   │   ├── convert_pos.R    # Column type conversion
-│   │   ├── export_excel.R   # Excel export (writexl)
-│   │   ├── rename_columns.R # Column/value renaming
-│   │   ├── export_rds.R     # RDS file operations
-│   │   ├── clean_compress.R # Data cleaning & compression
-│   │   ├── export_txt.R     # Text file export
-│   │   └── utils.R          # Module entry point
-│   ├── src/                  # Python wrapper
-│   ├── example/              # Example configuration files
-│   └── README.md             # Module documentation
-└── ...                          # More modules coming soon
+└── analysis/                    # Analysis code (5 categories)
+    ├── 01_basic_gwas/          # Basic GWAS analysis
+    ├── 02_multiomics_gwas/     # Multi-omics GWAS
+    ├── 03_singlecell_gwas/     # Single-cell GWAS
+    ├── 04_comorbidity_gwas/    # Comorbidity GWAS
+    └── 05_auxiliary_tools/    # Auxiliary tools
+        ├── utils/                      # [Module] Auxiliary data processing tools
+        ├── manhattan_plot/           # [Module] Manhattan plot and QQ plot
+        ├── batch_gsmap/              # [Module] Batch gsMap spatial colocalization
+        ├── batch_smr_dynamic/        # [Module] Batch SMR dynamic immune analysis
+        └── convert_supergnova/       # [Module] SuperGNOVA TXT to CSV converter
 ```
 
 ## Available Modules
