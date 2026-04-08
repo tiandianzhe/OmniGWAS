@@ -346,7 +346,7 @@ This analysis codebase is built upon **easyGWAS** (v4.0.0), a post-GWAS analysis
 - **Maintainer**: myy <15985997536@163.com>
 - **License**: GPL-3
 - **Developed by**: easyDSM Team
-- 
+
 **WorkBuddy AI Assistant** - This project was developed with assistance from WorkBuddy AI, which helped with:
 - Module architecture design and code structure
 - Documentation writing and formatting
