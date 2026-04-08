@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "convert-supergnova"
+version = "1.0.0"
+description = "Convert SuperGNOVA TXT results to CSV format for GWAS analysis"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Dianzhe Tian", email = "tiandianzhe@gmail.com"}
+]
+keywords = ["gwas", "genomics", "bioinformatics", "supergnova", "data-conversion"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+Homepage = "https://github.com/tiandianzhe/OmniGWAS"
+Documentation = "https://github.com/tiandianzhe/OmniGWAS/tree/main/convert_supergnova"
+Repository = "https://github.com/tiandianzhe/OmniGWAS"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+supergnova2csv = "converter:convert_supergnova_to_csv"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"

@@ -1,0 +1,125 @@
+# OmniGWAS utils Configuration Example
+# This file demonstrates common data processing workflows
+
+# Example 1: Read and Convert GWAS Data
+example_1:
+  description: "Read GWAS summary stats and convert columns"
+  steps:
+    - action: read
+      input: "GWAS_results.txt.gz"
+      header: true
+      sep: "auto"
+
+    - action: convert
+      columns:
+        - "pos.outcome"
+        - "chr.outcome"
+        - "pval.outcome"
+        - "beta.outcome"
+        - "se.outcome"
+      to_type: "numeric"
+
+    - action: export
+      format: "rds"
+      output: "cleaned_GWAS.rds"
+
+
+# Example 2: Rename and Export for Analysis
+example_2:
+  description: "Rename disease identifiers and export to Excel"
+  input: "raw_data.rds"
+  output: "processed_results.xlsx"
+  rename_rules:
+    - column: "outcome"
+      from: "Nonalcoholic_steatohepatitis_R11"
+      to: "NASH"
+    - column: "outcome"
+      from: "Liver_cancer"
+      to: "HCC"
+    - column: "id.outcome"
+      from: "Nonalcoholic_steatohepatitis_R11"
+      to: "NASH"
+
+
+# Example 3: Clean and Compress for FUMA
+example_3:
+  description: "Prepare data for FUMA GWAS annotation"
+  input: "metal_output.rds"
+  output: "FUMA_input.txt.gz"
+  keep_columns:
+    - "SNP"
+    - "chr.outcome"
+    - "pos.outcome"
+    - "pval.outcome"
+    - "effect_allele.outcome"
+    - "other_allele.outcome"
+    - "beta.outcome"
+    - "se.outcome"
+
+
+# Example 4: Quick GWAS Clean
+example_4:
+  description: "Standard GWAS data cleanup"
+  input: "full_metal_results.rds"
+  output: "cleaned_results.txt.gz"
+  drop_columns:
+    - "outcome"
+    - "id.outcome"
+    - "mr_keep.outcome"
+    - "pval_origin.outcome"
+    - "ncase.outcome"
+    - "ncontrol.outcome"
+
+
+# Example 5: Export Multiple Sheets
+example_5:
+  description: "Export results to Excel with multiple sheets"
+  input: "full_results.rds"
+  output: "analysis_report.xlsx"
+  sheets:
+    - name: "Summary"
+      keep_columns:
+        - "SNP"
+        - "chr.outcome"
+        - "pos.outcome"
+        - "pval.outcome"
+    - name: "TopHits"
+      filter:
+        column: "pval.outcome"
+        threshold: 0.001
+    - name: "FullData"
+      include_all: true
+
+
+# Common column name mappings
+column_mappings:
+  chr:
+    - "chr.outcome"
+    - "chromosome"
+    - "CHROM"
+  pos:
+    - "pos.outcome"
+    - "position"
+    - "POS"
+  pval:
+    - "pval.outcome"
+    - "pvalue"
+    - "P"
+    - "PVAL"
+  beta:
+    - "beta.outcome"
+    - "effect_size"
+    - "BETA"
+  se:
+    - "se.outcome"
+    - "standard_error"
+    - "SE"
+
+
+# Output directories
+output_dirs:
+  results: "E:/mr/results/"
+  cleaned: "E:/mr/cleaned/"
+  excel: "E:/mr/excel/"
+  fuma: "E:/mr/FUMA/"
+  archive: "E:/mr/archive/"
