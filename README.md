@@ -24,6 +24,53 @@ OmniGWAS is a modular, open-source toolkit designed for geneticists and bioinfor
 - **Multi-language Support**: Combines the statistical power of R with the flexibility of Python
 - **Bioinformatics Focused**: Optimized for HCC genomics, nuclear imaging phenotypes, and related research
 - **Beginner Friendly**: Clear documentation, example data, and comprehensive README files
+- **Comprehensive Coverage**: Five major analysis categories covering basic GWAS to multi-omics integration
+
+## Analysis Categories
+
+The analysis code is organized into five main categories in the `analysis/` directory:
+
+### 1. Basic GWAS Analysis (`analysis/01_basic_gwas/`)
+Core GWAS data processing, quality control, locus extraction, and basic statistical analysis.
+- GWAS locus extraction (`get_loci`, `get_loci2`)
+- Format conversion (`convert_format`, `liftover_convert_data`)
+- GWAS Meta-analysis (`metal_gwas`)
+- Gene-based analysis (`run_magmar`, `run_gcta_gene_based_analysis`)
+- Fine-mapping (`focus_finemaping`, `gsmap_format`)
+- Quality control (`run_EasyQC_munge`, `run_ldsc_EFA`)
+
+### 2. Multi-omics GWAS (`analysis/02_multiomics_gwas/`)
+Integration of eQTL, pQTL, mQTL and other omics data with GWAS.
+- GTEx/PsychENCODE data extraction
+- TWAS analysis (`SPrediXcan`, `SMulTiXcan`, `UTMOST`)
+- HESS analysis
+- MR-JTI cross-tissue analysis
+- XWAS/FUSION analysis
+
+### 3. Single-cell GWAS (`analysis/03_singlecell_gwas/`)
+Single-cell and spatial transcriptomics GWAS analysis.
+- Dynamic immune single-cell SMR (`batch_xqtl_smr`)
+- pQTL/mQTL/eQTL SMR analysis
+- Multi-omics SMR (`multi_omic_MR`, `multi_omic_SMR`)
+- scTenifoldKnk virtual knockout analysis
+
+### 4. Comorbidity GWAS (`analysis/04_comorbidity_gwas/`)
+Disease comorbidity and two-sample MR analysis.
+- Two-sample MR (`mr_modified`)
+- Colocalization (`data_to_coloc`, `run_hyprcoloc`)
+- LDSC and MRlap
+- Advanced MR methods (HDL, pleioFDR, CAUSE, LCV, PLACO)
+- Genetic correlation (GNOVA, SuperGNOVA)
+- Multi-trait analysis (MTAG, CPASSOC, Mixer, LAVA)
+- Multivariate MR (`run_mvmr`)
+
+### 5. Auxiliary Tools (`analysis/05_auxiliary_tools/`)
+Supporting analysis tools including data processing and visualization.
+- Data I/O and cleaning
+- Excel/TXT export
+- Proteomics MR (`PWMR3`)
+- Result visualization
+- Multi-omics data processing
 
 ## Project Structure
 
@@ -32,7 +79,12 @@ OmniGWAS/
 ├── README.md                    # Main project README
 ├── LICENSE                      # MIT License
 ├── docs/                        # Project-wide documentation
-├── analysis/                    # Main GWAS analysis scripts (R & Python)
+├── analysis/                    # Analysis code (5 categories)
+│   ├── 01_basic_gwas/          # Basic GWAS analysis
+│   ├── 02_multiomics_gwas/     # Multi-omics GWAS
+│   ├── 03_singlecell_gwas/     # Single-cell GWAS
+│   ├── 04_comorbidity_gwas/    # Comorbidity GWAS
+│   └── 05_auxiliary_tools/     # Auxiliary tools
 ├── utils/                       # Utility scripts and helpers
 ├── data/                        # Example datasets
 ├── convert_supergnova/          # [Module] SuperGNOVA TXT to CSV converter
