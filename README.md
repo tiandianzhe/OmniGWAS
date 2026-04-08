@@ -2,7 +2,17 @@
 
 > An integrated GWAS (Genome-Wide Association Study) analysis toolkit combining R and Python for bioinformatics research, with a focus on hepatocellular carcinoma (HCC) and nuclear medicine imaging phenotypes.
 
-**Powered by WorkBuddy AI Assistant**
+## Background
+
+This analysis codebase is built upon **easyGWAS** (v4.0.0), a post-GWAS analysis package developed by the easyDSM team. The original easyGWAS package was created by Meiyunyun and serves as the foundation for our GWAS analysis workflows.
+
+**easyGWAS Package Information:**
+- **Package**: easyGWAS
+- **Version**: 4.0.0
+- **Author**: Meiyunyun
+- **Maintainer**: myy <15985997536@163.com>
+- **License**: GPL-3
+- **Developed by**: easyDSM Team
 
 ## Overview
 
