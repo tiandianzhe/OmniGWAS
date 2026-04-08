@@ -12,7 +12,7 @@ This module provides tools for running SMR analysis across multiple dynamic immu
 
 - Batch processing of multiple dynamic immune cell populations
 - Support for time-course data (0h, 16h, 40h, 5d, LA)
-- Integration with OmniGWAS::batch_xqtl_smr
+- Integration with easyGWAS::batch_xqtl_smr
 - Comprehensive result consolidation
 - Heatmap visualization of dynamic SMR results
 - Python CLI and R API dual interfaces
@@ -23,7 +23,7 @@ This module provides tools for running SMR analysis across multiple dynamic immu
 
 ```r
 # Install OmniGWAS package
-devtools::install_github("tiandianzhe/OmniGWAS")
+devtools::install_github("tiandianzhe/easyGWAS")
 
 # Install additional R packages
 install.packages("yaml")

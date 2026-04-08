@@ -24,7 +24,7 @@
 #' @param plot_highlight.col Highlight color (default: "#8680C0")
 #' @param verbose Print progress messages (default: TRUE)
 #' @param stop_on_error Stop execution on first error (default: FALSE)
-#' @param ... Additional arguments passed to OmniGWAS::batch_xqtl_smr
+#' @param ... Additional arguments passed to easyGWAS::batch_xqtl_smr
 #'
 #' @return List with success/failed summaries and detailed results
 #'
@@ -77,7 +77,7 @@ run_smr_dynamic_batch <- function(
   # Check if OmniGWAS package is available
   if (!requireNamespace("OmniGWAS", quietly = TRUE)) {
     stop("OmniGWAS package is required. Please install from GitHub:\n",
-         "devtools::install_github('tiandianzhe/OmniGWAS')")
+         "devtools::install_github('tiandianzhe/easyGWAS')")
   }
 
   # Initialize tracking
@@ -117,7 +117,7 @@ run_smr_dynamic_batch <- function(
     tryCatch({
 
       # Run SMR analysis via OmniGWAS
-      OmniGWAS::batch_xqtl_smr(
+      easyGWAS::batch_xqtl_smr(
         out_filename = out_filename,
         id_outcome = NULL,
         outcome_name = outcome_name,
