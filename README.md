@@ -2,18 +2,6 @@
 
 > An integrated GWAS (Genome-Wide Association Study) analysis toolkit combining R and Python for genetic research.
 
-## Background
-
-This analysis codebase is built upon **easyGWAS** (v4.0.0), a post-GWAS analysis package developed by the easyDSM team. The original easyGWAS package was created by Meiyunyun and serves as the foundation for our GWAS analysis workflows.
-
-**easyGWAS Package Information:**
-- **Package**: easyGWAS
-- **Version**: 4.0.0
-- **Author**: Meiyunyun
-- **Maintainer**: myy <15985997536@163.com>
-- **License**: GPL-3
-- **Developed by**: easyDSM Team
-
 ## Overview
 
 OmniGWAS is a modular, open-source toolkit designed for geneticists and bioinformaticians conducting GWAS and related analyses. The project is structured with independent submodules for different analysis tasks, making it easy to use specific components without installing the entire suite.
@@ -349,6 +337,16 @@ This toolkit was developed to support GWAS and post-GWAS bioinformatics research
 
 ## Development Notes
 
+This analysis codebase is built upon **easyGWAS** (v4.0.0), a post-GWAS analysis package developed by the easyDSM team. The original easyGWAS package was created by Meiyunyun and serves as the foundation for our GWAS analysis workflows.
+
+**easyGWAS Package Information:**
+- **Package**: easyGWAS
+- **Version**: 4.0.0
+- **Author**: Meiyunyun
+- **Maintainer**: myy <15985997536@163.com>
+- **License**: GPL-3
+- **Developed by**: easyDSM Team
+- 
 **WorkBuddy AI Assistant** - This project was developed with assistance from WorkBuddy AI, which helped with:
 - Module architecture design and code structure
 - Documentation writing and formatting
