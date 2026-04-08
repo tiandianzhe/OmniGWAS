@@ -1,6 +1,6 @@
 # OmniGWAS
 
-> An integrated GWAS (Genome-Wide Association Study) analysis toolkit combining R and Python for bioinformatics research, with a focus on hepatocellular carcinoma (HCC) and nuclear medicine imaging phenotypes.
+> An integrated GWAS (Genome-Wide Association Study) analysis toolkit combining R and Python for genetic research.
 
 ## Background
 
@@ -22,7 +22,7 @@ OmniGWAS is a modular, open-source toolkit designed for geneticists and bioinfor
 
 - **Modular Design**: Each analysis module is self-contained with its own documentation, tests, and examples
 - **Multi-language Support**: Combines the statistical power of R with the flexibility of Python
-- **Bioinformatics Focused**: Optimized for HCC genomics, nuclear imaging phenotypes, and related research
+- **Bioinformatics Focused**: Comprehensive tools for GWAS and post-GWAS analysis
 - **Beginner Friendly**: Clear documentation, example data, and comprehensive README files
 - **Comprehensive Coverage**: Five major analysis categories covering basic GWAS to multi-omics integration
 
@@ -341,11 +341,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Dianzhe Tian** 
 - GitHub: [@tiandianzhe](https://github.com/tiandianzhe)
 - Email: tiandianzhe@outlook.com
-- Affiliation: Department of Liver Surgery, Peking Union Medical College Hospital
+- Affiliation: Peking Union Medical College Hospital
 
 ## Acknowledgments
 
-This toolkit was developed to support bioinformatics research in hepatocellular carcinoma and nuclear medicine imaging. We welcome collaborations and contributions from the research community.
+This toolkit was developed to support GWAS and post-GWAS bioinformatics research. We welcome collaborations and contributions from the research community.
 
 ## Development Notes
 
