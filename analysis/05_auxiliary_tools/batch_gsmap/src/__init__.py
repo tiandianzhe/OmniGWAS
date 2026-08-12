@@ -16,15 +16,17 @@ Example:
 """
 
 from .wrapper import (
-    run_batch_gsmap,
-    parse_sample_names_from_dir,
     load_config,
-    main as cli_main
+    parse_sample_names_from_dir,
+    run_batch_gsmap,
+)
+from .wrapper import (
+    main as cli_main,
 )
 
 __all__ = [
-    "run_batch_gsmap",
-    "parse_sample_names_from_dir",
+    "cli_main",
     "load_config",
-    "cli_main"
+    "parse_sample_names_from_dir",
+    "run_batch_gsmap",
 ]

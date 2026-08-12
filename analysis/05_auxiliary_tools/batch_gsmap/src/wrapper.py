@@ -1,20 +1,20 @@
-"""
-Python wrapper for batch gsMap analysis.
+"""Python API and CLI for batch gsMap analysis.
 
-This module provides a Python interface to run gsMap spatial transcriptomics
-colocalization analysis in batch mode across multiple samples.
-
-Author: WorkBuddy AI Assistant
-Version: 1.0.0
+The Python wrapper sends structured JSON to a fixed R driver over standard
+input. It does not create or execute generated R source files.
 """
+
+from __future__ import annotations
 
 import argparse
-import os
-import sys
-import subprocess
 import json
+import subprocess
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
+MODULE_DIR = Path(__file__).resolve().parent.parent
+R_DRIVER = MODULE_DIR / "R" / "cli_driver.R"
+VERSION = "0.1.0"
 
 
 def run_batch_gsmap(
@@ -28,256 +28,174 @@ def run_batch_gsmap(
     save_base_path: str = ".",
     verbose: bool = True,
     stop_on_error: bool = False,
-    r_library_path: Optional[str] = None
+    r_library_path: Optional[str] = None,
+    *,
+    r_executable: str = "Rscript",
+    timeout: Optional[int] = 86400,
 ) -> Dict[str, Any]:
-    """
-    Run batch gsMap analysis from Python.
-
-    Parameters
-    ----------
-    sample_names : List[str]
-        List of sample names to process
-    sumstats_file : str
-        Path to GWAS summary statistics file (.gz supported)
-    trait_name : str
-        Name of the GWAS trait
-    h5ad_dir : str
-        Directory containing h5ad spatial transcriptomics files
-    annotation : str, optional
-        Annotation type (default: "annotation")
-    data_layer : str, optional
-        Data layer type (default: "count")
-    max_processes : int, optional
-        Maximum number of parallel processes (default: 10)
-    save_base_path : str, optional
-        Base directory for saving results (default: ".")
-    verbose : bool, optional
-        Print progress messages (default: True)
-    stop_on_error : bool, optional
-        Stop execution on first error (default: False)
-    r_library_path : str, optional
-        Path to R library containing batch_gsmap functions
-
-    Returns
-    -------
-    Dict[str, Any]
-        Results containing success/failed lists and summary
-    """
-    # Validate inputs
-    if not os.path.exists(sumstats_file):
+    """Run gsMap over multiple spatial transcriptomics samples."""
+    if not sample_names:
+        raise ValueError("sample_names must contain at least one sample")
+    _validate_path_components(sample_names, "sample_names")
+    if not Path(sumstats_file).is_file():
         raise FileNotFoundError(f"Summary statistics file not found: {sumstats_file}")
-
-    if not os.path.isdir(h5ad_dir):
+    if not Path(h5ad_dir).is_dir():
         raise NotADirectoryError(f"H5AD directory not found: {h5ad_dir}")
+    if max_processes < 1:
+        raise ValueError("max_processes must be at least 1")
+    if not R_DRIVER.is_file():
+        raise FileNotFoundError(f"R driver not found: {R_DRIVER}")
 
-    # Create output directory if needed
-    os.makedirs(save_base_path, exist_ok=True)
-
-    # Build R code to execute
-    r_code = f'''
-source("{os.path.join(os.path.dirname(__file__), '..', 'R', 'batch_gsmap.R')}")
-
-sample_names <- c({','.join(f'"{s}"' for s in sample_names)})
-
-result <- run_gsmap_batch(
-    sample_names = sample_names,
-    sumstats_file = "{sumstats_file}",
-    trait_name = "{trait_name}",
-    h5ad_dir = "{h5ad_dir}",
-    annotation = "{annotation}",
-    data_layer = "{data_layer}",
-    max_processes = {max_processes},
-    save_base_path = "{save_base_path}",
-    verbose = {str(verbose).upper()},
-    stop_on_error = {str(stop_on_error).upper()}
-)
-
-# Export as JSON for Python parsing
-export_batch_results(result, output_dir = "{save_base_path}", format = "json")
-'''
-
-    # Write temporary R script
-    temp_r_file = os.path.join(save_base_path, "_temp_batch_gsmap.R")
-    with open(temp_r_file, 'w', encoding='utf-8') as f:
-        f.write(r_code)
+    output_dir = Path(save_base_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "sample_names": sample_names,
+        "sumstats_file": str(sumstats_file),
+        "trait_name": trait_name,
+        "h5ad_dir": str(h5ad_dir),
+        "annotation": annotation,
+        "data_layer": data_layer,
+        "max_processes": max_processes,
+        "save_base_path": str(output_dir),
+        "verbose": verbose,
+        "stop_on_error": stop_on_error,
+        "r_library_path": r_library_path,
+    }
 
     try:
-        # Run R script
-        cmd = ['Rscript', temp_r_file]
         result = subprocess.run(
-            cmd,
+            [r_executable, str(R_DRIVER)],
+            input=json.dumps(payload, ensure_ascii=False),
             capture_output=True,
             text=True,
-            check=False
+            check=False,
+            timeout=timeout,
         )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"{r_executable} was not found") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"R batch gsMap driver timed out after {timeout} seconds") from exc
 
-        if result.returncode != 0:
-            print(f"Error running batch gsMap:\n{result.stderr}", file=sys.stderr)
-            raise RuntimeError(f"R script failed with code {result.returncode}")
+    if result.returncode != 0:
+        raise RuntimeError(
+            "R batch gsMap driver failed with code "
+            f"{result.returncode}: {result.stderr.strip()}"
+        )
+    if verbose and result.stdout:
+        print(result.stdout, end="")
 
-        if verbose:
-            print(result.stdout)
-
-        # Read results from JSON if available
-        json_file = os.path.join(save_base_path, "batch_results.json")
-        if os.path.exists(json_file):
-            with open(json_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-
-        return {"status": "completed", "message": "Batch analysis finished"}
-
-    finally:
-        # Clean up temp file
-        if os.path.exists(temp_r_file):
-            os.remove(temp_r_file)
+    result_file = output_dir / "batch_results.json"
+    if result_file.is_file():
+        with result_file.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    return {"status": "completed", "message": "Batch analysis finished"}
 
 
-def parse_sample_names_from_dir(h5ad_dir: str, pattern: str = "*.MOSTA.h5ad") -> List[str]:
-    """
-    Parse sample names from h5ad files in a directory.
-
-    Parameters
-    ----------
-    h5ad_dir : str
-        Directory containing h5ad files
-    pattern : str, optional
-        File pattern to match (default: "*.MOSTA.h5ad")
-
-    Returns
-    -------
-    List[str]
-        List of sample names
-    """
-    from pathlib import Path
-
-    h5ad_path = Path(h5ad_dir)
-    sample_names = []
-
-    for f in h5ad_path.glob(pattern):
-        name = f.stem.replace(".MOSTA", "")
-        sample_names.append(name)
-
-    return sorted(sample_names)
+def parse_sample_names_from_dir(
+    h5ad_dir: str,
+    pattern: str = "*.MOSTA.h5ad",
+) -> List[str]:
+    """Return sorted sample names discovered from H5AD filenames."""
+    return sorted(
+        path.name.removesuffix(".MOSTA.h5ad")
+        for path in Path(h5ad_dir).glob(pattern)
+    )
 
 
 def load_config(config_file: str) -> Dict[str, Any]:
-    """
-    Load batch configuration from YAML file.
-
-    Parameters
-    ----------
-    config_file : str
-        Path to YAML configuration file
-
-    Returns
-    -------
-    Dict[str, Any]
-        Configuration parameters
-    """
+    """Load a YAML mapping without constructing arbitrary Python objects."""
     import yaml
 
-    with open(config_file, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-
+    with Path(config_file).open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle)
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must contain a YAML mapping")
     return config
 
 
-def main():
-    """Command-line interface for batch gsMap analysis."""
+def _require_config_value(config: Dict[str, Any], name: str) -> Any:
+    value = config.get(name)
+    if value is None or value == "":
+        raise ValueError(f"Missing required configuration value: {name}")
+    return value
+
+
+def _as_string_list(value: Any, name: str) -> List[str]:
+    """Validate a YAML value as a non-empty list of strings."""
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{name} must be a non-empty YAML list")
+    if not all(isinstance(item, str) and item.strip() for item in value):
+        raise ValueError(f"Every {name} entry must be a non-empty string")
+    return value
+
+
+def _validate_path_components(values: List[str], name: str) -> None:
+    """Reject traversal and ambiguous output-directory components."""
+    if len(set(values)) != len(values):
+        raise ValueError(f"{name} entries must be unique")
+    for value in values:
+        if not isinstance(value, str) or not value or value in {".", ".."}:
+            raise ValueError(f"Every {name} entry must be a non-empty path component")
+        if "/" in value or "\\" in value:
+            raise ValueError(f"{name} entries cannot contain path separators")
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create the batch gsMap CLI parser."""
     parser = argparse.ArgumentParser(
-        description="Batch gsMap analysis for spatial transcriptomics GWAS colocalization"
+        prog="python -m batch_gsmap.src",
+        description="Batch gsMap spatial-transcriptomics GWAS analysis",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument("--samples", nargs="+")
+    parser.add_argument("--samples-file")
+    parser.add_argument("--samples-dir")
+    parser.add_argument("--sumstats")
+    parser.add_argument("--trait")
+    parser.add_argument("--h5ad-dir")
+    parser.add_argument("--annotation", default="annotation")
+    parser.add_argument("--data-layer", default="count")
+    parser.add_argument("--max-processes", type=int, default=10)
+    parser.add_argument("--output", default=".")
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--stop-on-error", action="store_true")
+    parser.add_argument("--config")
+    return parser
 
-    parser.add_argument(
-        "--samples",
-        nargs="+",
-        help="Sample names to process (space-separated)"
-    )
-    parser.add_argument(
-        "--samples-file",
-        help="File containing sample names (one per line)"
-    )
-    parser.add_argument(
-        "--samples-dir",
-        help="Directory containing h5ad files to auto-detect samples"
-    )
-    parser.add_argument(
-        "--sumstats",
-        required=True,
-        help="Path to GWAS summary statistics file"
-    )
-    parser.add_argument(
-        "--trait",
-        required=True,
-        help="Name of the GWAS trait"
-    )
-    parser.add_argument(
-        "--h5ad-dir",
-        required=True,
-        help="Directory containing h5ad spatial transcriptomics files"
-    )
-    parser.add_argument(
-        "--annotation",
-        default="annotation",
-        help="Annotation type (default: annotation)"
-    )
-    parser.add_argument(
-        "--data-layer",
-        default="count",
-        help="Data layer type (default: count)"
-    )
-    parser.add_argument(
-        "--max-processes",
-        type=int,
-        default=10,
-        help="Maximum parallel processes (default: 10)"
-    )
-    parser.add_argument(
-        "--output",
-        default=".",
-        help="Output directory (default: current directory)"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        default=True,
-        help="Print progress messages"
-    )
-    parser.add_argument(
-        "--stop-on-error",
-        action="store_true",
-        help="Stop on first error"
-    )
-    parser.add_argument(
-        "--config",
-        help="YAML config file with all parameters"
-    )
 
-    args = parser.parse_args()
+def main(argv: Optional[List[str]] = None) -> int:
+    """Run the batch gsMap CLI."""
+    args = create_parser().parse_args(argv)
 
-    # Load config if provided
     if args.config:
         config = load_config(args.config)
-        sample_names = config.get("samples", [])
-        sumstats_file = config.get("sumstats_file")
-        trait_name = config.get("trait_name")
-        h5ad_dir = config.get("h5ad_dir")
+        sample_names = _as_string_list(
+            _require_config_value(config, "samples"),
+            "samples",
+        )
+        sumstats_file = _require_config_value(config, "sumstats_file")
+        trait_name = _require_config_value(config, "trait_name")
+        h5ad_dir = _require_config_value(config, "h5ad_dir")
         annotation = config.get("annotation", "annotation")
         data_layer = config.get("data_layer", "count")
-        max_processes = config.get("max_processes", 10)
+        max_processes = int(config.get("max_processes", 10))
         save_base_path = config.get("save_base_path", ".")
+        stop_on_error = bool(config.get("stop_on_error", False))
     else:
-        # Get sample names
         if args.samples:
             sample_names = args.samples
         elif args.samples_file:
-            with open(args.samples_file, 'r') as f:
-                sample_names = [line.strip() for line in f if line.strip()]
+            sample_names = [
+                line.strip()
+                for line in Path(args.samples_file).read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
         elif args.samples_dir:
             sample_names = parse_sample_names_from_dir(args.samples_dir)
         else:
-            raise ValueError("Must specify --samples, --samples-file, or --samples-dir")
-
+            raise ValueError("Specify --samples, --samples-file, or --samples-dir")
+        if not args.sumstats or not args.trait or not args.h5ad_dir:
+            raise ValueError("--sumstats, --trait, and --h5ad-dir are required")
         sumstats_file = args.sumstats
         trait_name = args.trait
         h5ad_dir = args.h5ad_dir
@@ -285,10 +203,11 @@ def main():
         data_layer = args.data_layer
         max_processes = args.max_processes
         save_base_path = args.output
+        stop_on_error = args.stop_on_error
 
-    # Run analysis
-    print(f"Starting batch gsMap analysis for {len(sample_names)} samples...")
-
+    verbose = not args.quiet
+    if verbose:
+        print(f"Starting batch gsMap analysis for {len(sample_names)} samples...")
     results = run_batch_gsmap(
         sample_names=sample_names,
         sumstats_file=sumstats_file,
@@ -298,14 +217,14 @@ def main():
         data_layer=data_layer,
         max_processes=max_processes,
         save_base_path=save_base_path,
-        verbose=args.verbose,
-        stop_on_error=args.stop_on_error
+        verbose=verbose,
+        stop_on_error=stop_on_error,
     )
-
-    print(f"\nBatch analysis completed!")
-    print(f"Success: {results.get('success_count', 'N/A')}")
-    print(f"Failed: {results.get('failed_count', 'N/A')}")
+    if verbose:
+        print(f"Success: {results.get('success_count', 'N/A')}")
+        print(f"Failed: {results.get('failed_count', 'N/A')}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -2,8 +2,8 @@
 #' @description Execute SMR (Summary-based Mendelian Randomization) analysis across
 #'              multiple dynamic immune cell populations in batch mode.
 #'
-#' @author WorkBuddy AI Assistant
-#' @version 1.0.0
+#' @author OmniGWAS contributors
+#' @version 0.1.0
 #'
 #' @importFrom utils txtProgressBar setTxtProgressBar
 
@@ -24,6 +24,8 @@
 #' @param plot_highlight.col Highlight color (default: "#8680C0")
 #' @param verbose Print progress messages (default: TRUE)
 #' @param stop_on_error Stop execution on first error (default: FALSE)
+#' @param runner Optional function used to run one resource. Intended for testing.
+#'               When NULL, easyGWAS::batch_xqtl_smr is used.
 #' @param ... Additional arguments passed to easyGWAS::batch_xqtl_smr
 #'
 #' @return List with success/failed summaries and detailed results
@@ -62,6 +64,7 @@ run_smr_dynamic_batch <- function(
     plot_highlight.col = "#8680C0",
     verbose = TRUE,
     stop_on_error = FALSE,
+    runner = NULL,
     ...
 ) {
 
@@ -74,15 +77,37 @@ run_smr_dynamic_batch <- function(
     dir.create(save_base_path, recursive = TRUE)
   }
 
-  # Check if OmniGWAS package is available
-  if (!requireNamespace("OmniGWAS", quietly = TRUE)) {
-    stop("OmniGWAS package is required. Please install from GitHub:\n",
-         "devtools::install_github('tiandianzhe/easyGWAS')")
+  if (length(xqtl_resources) == 0) {
+    stop("At least one xQTL resource is required")
+  }
+  if (any(!nzchar(xqtl_resources)) || any(grepl("[/\\\\]", xqtl_resources)) ||
+      any(xqtl_resources %in% c(".", ".."))) {
+    stop("xQTL resources must be non-empty path components without separators")
+  }
+  if (anyDuplicated(xqtl_resources)) {
+    stop("xQTL resources must be unique")
+  }
+
+  if (is.null(runner)) {
+    if (!requireNamespace("easyGWAS", quietly = TRUE)) {
+      stop(
+        "Optional package 'easyGWAS' is required for SMR execution. ",
+        "Install it explicitly and review its GPL-3.0-or-later license."
+      )
+    }
+    if (!"batch_xqtl_smr" %in% getNamespaceExports("easyGWAS")) {
+      stop("The installed easyGWAS package does not export batch_xqtl_smr")
+    }
+    runner <- getExportedValue("easyGWAS", "batch_xqtl_smr")
+  }
+
+  if (!is.function(runner)) {
+    stop("runner must be a function")
   }
 
   # Initialize tracking
-  success_list <- c()
-  fail_list <- c()
+  success_list <- character()
+  fail_list <- character()
   result_details <- list()
 
   n_total <- length(xqtl_resources)
@@ -114,10 +139,8 @@ run_smr_dynamic_batch <- function(
 
     message(paste0("\n[", i, "/", n_total, "] Processing: ", xqtl_resource))
 
-    tryCatch({
-
-      # Run SMR analysis via OmniGWAS
-      easyGWAS::batch_xqtl_smr(
+    attempt <- tryCatch({
+      runner(
         out_filename = out_filename,
         id_outcome = NULL,
         outcome_name = outcome_name,
@@ -137,35 +160,40 @@ run_smr_dynamic_batch <- function(
         save_path = resource_path,
         ...
       )
+      list(success = TRUE, output_dir = resource_path)
+    }, error = function(e) {
+      list(success = FALSE, error = conditionMessage(e))
+    })
 
+    if (isTRUE(attempt$success)) {
       if (verbose) {
         message(paste0("[", i, "/", n_total, "] SUCCESS: ", xqtl_resource))
       }
-
       success_list <- c(success_list, xqtl_resource)
       result_details[[xqtl_resource]] <- list(
         status = "success",
-        output_dir = resource_path
+        output_dir = attempt$output_dir
       )
-
-    }, error = function(e) {
-      fail_msg <- conditionMessage(e)
+    } else {
+      fail_msg <- attempt$error
       if (verbose) {
         message(paste0("[", i, "/", n_total, "] FAIL: ", xqtl_resource,
                        " - ", fail_msg))
       }
 
-      fail_list <- c(fail_list, paste0(xqtl_resource, " (", fail_msg, ")"))
+      fail_list <- c(fail_list, xqtl_resource)
       result_details[[xqtl_resource]] <- list(
         status = "failed",
         error = fail_msg
       )
 
       if (stop_on_error) {
-        close(pb)
+        if (verbose) {
+          close(pb)
+        }
         stop("Stopped on first error at: ", xqtl_resource)
       }
-    })
+    }
 
     if (verbose) {
       setTxtProgressBar(pb, i)
@@ -228,17 +256,19 @@ generate_smr_summary <- function(
     save_base_path
 ) {
 
+  failure_messages <- vapply(fail_list, function(resource) {
+    error <- result_details[[resource]]$error
+    if (is.null(error) || length(error) == 0) "unknown error" else error
+  }, character(1))
+
   summary_df <- data.frame(
-    resource = c(success_list,
-                 sapply(strsplit(fail_list, " \\("), `[`, 1)),
+    resource = c(success_list, fail_list),
     status = c(rep("success", length(success_list)),
                rep("failed", length(fail_list))),
     error_msg = c(rep(NA, length(success_list)),
-                  sapply(strsplit(fail_list, "\\("), function(x) {
-                    gsub("\\)$", "", x[2])
-                  })),
-    trait = outcome_name,
-    timestamp = Sys.time(),
+                  failure_messages),
+    trait = rep(outcome_name, length(success_list) + length(fail_list)),
+    timestamp = rep(Sys.time(), length(success_list) + length(fail_list)),
     stringsAsFactors = FALSE
   )
 
@@ -248,6 +278,8 @@ generate_smr_summary <- function(
 
   return(summary_df)
 }
+
+
 
 
 #' Parse xQTL resources from dynamic immune cell datasets
@@ -394,7 +426,7 @@ plot_dynamic_smr_heatmap <- function(
 ) {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
-    install.packages("ggplot2")
+    stop("Package 'ggplot2' is required. Restore dependencies from renv.lock.")
   }
 
   # Transform P-values to -log10

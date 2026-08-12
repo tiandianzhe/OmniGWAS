@@ -1,113 +1,103 @@
-"""
-Python wrapper for R-based Manhattan plot generation
-Provides CLI interface and Python API for OmniGWAS manhattan_plot module
-"""
+"""Python API and CLI for the R-based GWAS plotting functions."""
 
-import subprocess
-import os
+from __future__ import annotations
+
 import argparse
+import json
+import subprocess
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+MODULE_DIR = Path(__file__).resolve().parent.parent
+R_DRIVER = MODULE_DIR / "R" / "cli_driver.R"
+VERSION = "0.1.0"
 
 
-def run_r_script(
-    script_path: str,
-    args: dict,
-    r_executable: str = "Rscript"
-) -> subprocess.CompletedProcess:
-    """
-    Execute R script with arguments
-
-    Args:
-        script_path: Path to the R script
-        args: Dictionary of arguments to pass to R
-        r_executable: R executable name or path
-
-    Returns:
-        CompletedProcess object
-    """
-    cmd = [r_executable, script_path]
-
-    for key, value in args.items():
-        if value is not None:
-            if isinstance(value, bool):
-                if value:
-                    cmd.extend([key])
-            else:
-                cmd.extend([key, str(value)])
-
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True
-    )
-
+def _run_plot(
+    operation: str,
+    payload: Dict[str, Any],
+    *,
+    r_executable: str = "Rscript",
+    timeout: Optional[int] = 300,
+) -> subprocess.CompletedProcess[str]:
+    if not R_DRIVER.is_file():
+        raise FileNotFoundError(f"R driver not found: {R_DRIVER}")
+    try:
+        result = subprocess.run(
+            [r_executable, str(R_DRIVER)],
+            input=json.dumps(
+                {"operation": operation, "payload": payload},
+                ensure_ascii=False,
+            ),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"{r_executable} was not found") from exc
     if result.returncode != 0:
-        print(f"Error running R script: {result.stderr}")
-        raise RuntimeError(f"R script execution failed: {result.stderr}")
-
+        raise RuntimeError(
+            f"R plotting driver failed with code {result.returncode}: "
+            f"{result.stderr.strip()}"
+        )
     return result
+
+
+def _validate_common(input_file: str, output: str, width: float, height: float, dpi: int) -> None:
+    if not Path(input_file).is_file():
+        raise FileNotFoundError(f"Input data file not found: {input_file}")
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive")
+    if dpi < 72:
+        raise ValueError("dpi must be at least 72")
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
 
 
 def create_manhattan(
     input_file: str,
     output: str = "manhattan_plot.png",
     pval_col: str = "P",
-    fdr_col: str = None,
+    fdr_col: Optional[str] = None,
     threshold: float = 0.05,
     threshold_type: str = "fdr",
     title: str = "Manhattan Plot",
     width: float = 12,
     height: float = 6,
     dpi: int = 300,
-    label_snps: str = None,
+    label_snps: Optional[str] = None,
     sig_color: str = "black",
-    r_executable: str = "Rscript"
-):
-    """
-    Create a Manhattan plot from GWAS summary statistics
-
-    Args:
-        input_file: Path to input CSV/TXT file
-        output: Output plot file path
-        pval_col: Column name for p-values
-        fdr_col: Column name for FDR values
-        threshold: Significance threshold
-        threshold_type: "pvalue" or "fdr"
-        title: Plot title
-        width: Plot width in inches
-        height: Plot height in inches
-        dpi: Resolution in DPI
-        label_snps: Comma-separated list of SNP IDs to label
-        sig_color: Color for significant points
-        r_executable: R executable path
-    """
-    # Get R script path
-    module_dir = Path(__file__).parent.parent
-    r_script = module_dir / "R" / "manhattan_plot.R"
-
-    if not r_script.exists():
-        raise FileNotFoundError(f"R script not found: {r_script}")
-
-    args = {
-        "--input": input_file,
-        "--output": output,
-        "--pval_col": pval_col,
-        "--threshold": threshold,
-        "--threshold_type": threshold_type,
-        "--title": title,
-        "--width": width,
-        "--height": height,
-        "--dpi": dpi,
-        "--sig_color": sig_color
-    }
-
-    if fdr_col:
-        args["--fdr_col"] = fdr_col
-
+    r_executable: str = "Rscript",
+    timeout: Optional[int] = 300,
+) -> subprocess.CompletedProcess[str]:
+    """Create a Manhattan plot from CSV or delimited text input."""
+    _validate_common(input_file, output, width, height, dpi)
+    if threshold_type not in {"pvalue", "fdr"}:
+        raise ValueError("threshold_type must be 'pvalue' or 'fdr'")
+    if not 0 < threshold <= 1:
+        raise ValueError("threshold must be in the interval (0, 1]")
+    labels = None
     if label_snps:
-        args["--label_snps"] = label_snps
-
-    return run_r_script(str(r_script), args, r_executable)
+        labels = [item.strip() for item in label_snps.split(",") if item.strip()]
+    return _run_plot(
+        "manhattan",
+        {
+            "input_file": input_file,
+            "output": output,
+            "pval_col": pval_col,
+            "fdr_col": fdr_col,
+            "threshold": threshold,
+            "threshold_type": threshold_type,
+            "title": title,
+            "width": width,
+            "height": height,
+            "dpi": dpi,
+            "label_snps": labels,
+            "sig_color": sig_color,
+        },
+        r_executable=r_executable,
+        timeout=timeout,
+    )
 
 
 def create_qq(
@@ -118,77 +108,53 @@ def create_qq(
     width: float = 6,
     height: float = 6,
     dpi: int = 300,
-    r_executable: str = "Rscript"
-):
-    """
-    Create a Q-Q plot from GWAS summary statistics
-
-    Args:
-        input_file: Path to input CSV/TXT file
-        output: Output plot file path
-        pval_col: Column name for p-values
-        title: Plot title
-        width: Plot width in inches
-        height: Plot height in inches
-        dpi: Resolution in DPI
-        r_executable: R executable path
-    """
-    module_dir = Path(__file__).parent.parent
-    r_script = module_dir / "R" / "manhattan_plot.R"
-
-    if not r_script.exists():
-        raise FileNotFoundError(f"R script not found: {r_script}")
-
-    args = {
-        "--input": input_file,
-        "--output": output,
-        "--pval_col": pval_col,
-        "--qq_only": True,
-        "--title": title,
-        "--width": width,
-        "--height": height,
-        "--dpi": dpi
-    }
-
-    return run_r_script(str(r_script), args, r_executable)
-
-
-def main():
-    """CLI entry point"""
-    parser = argparse.ArgumentParser(
-        description="OmniGWAS Manhattan Plot Generator",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Create Manhattan plot with FDR threshold
-  python -m src.wrapper --input data.csv --output manhattan.png --fdr_col FDR --threshold 0.05
-
-  # Create Manhattan plot with p-value threshold
-  python -m src.wrapper --input data.csv --output manhattan.png --pval_col P --threshold 5e-8 --threshold_type pvalue
-
-  # Create both Manhattan and QQ plots
-  python -m src.wrapper --input data.csv --output_dir plots/
-        """
+    r_executable: str = "Rscript",
+    timeout: Optional[int] = 300,
+) -> subprocess.CompletedProcess[str]:
+    """Create a Q-Q plot from CSV or delimited text input."""
+    _validate_common(input_file, output, width, height, dpi)
+    return _run_plot(
+        "qq",
+        {
+            "input_file": input_file,
+            "output": output,
+            "pval_col": pval_col,
+            "title": title,
+            "width": width,
+            "height": height,
+            "dpi": dpi,
+        },
+        r_executable=r_executable,
+        timeout=timeout,
     )
 
-    parser.add_argument("--input", "-i", required=True, help="Input data file (CSV/TXT)")
-    parser.add_argument("--output", "-o", default="manhattan_plot.png", help="Output plot file")
-    parser.add_argument("--pval_col", default="P", help="P-value column name")
-    parser.add_argument("--fdr_col", default=None, help="FDR column name")
-    parser.add_argument("--threshold", type=float, default=0.05, help="Significance threshold")
-    parser.add_argument("--threshold_type", choices=["pvalue", "fdr"], default="fdr",
-                       help="Type of threshold")
-    parser.add_argument("--title", default="Manhattan Plot", help="Plot title")
-    parser.add_argument("--width", type=float, default=12, help="Plot width in inches")
-    parser.add_argument("--height", type=float, default=6, help="Plot height in inches")
-    parser.add_argument("--dpi", type=int, default=300, help="Resolution in DPI")
-    parser.add_argument("--label_snps", default=None,
-                       help="Comma-separated SNP IDs to label")
-    parser.add_argument("--sig_color", default="black", help="Color for significant points")
-    parser.add_argument("--qq_only", action="store_true", help="Generate QQ plot only")
 
-    args = parser.parse_args()
+def create_parser() -> argparse.ArgumentParser:
+    """Create the plotting command-line parser."""
+    parser = argparse.ArgumentParser(
+        prog="python -m manhattan_plot.src",
+        description="Generate Manhattan or Q-Q plots with the OmniGWAS R module",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument("--input", "-i", required=True)
+    parser.add_argument("--output", "-o", default="manhattan_plot.png")
+    parser.add_argument("--pval-col", default="P")
+    parser.add_argument("--fdr-col")
+    parser.add_argument("--threshold", type=float, default=0.05)
+    parser.add_argument("--threshold-type", choices=["pvalue", "fdr"], default="fdr")
+    parser.add_argument("--title", default="Manhattan Plot")
+    parser.add_argument("--width", type=float, default=12)
+    parser.add_argument("--height", type=float, default=6)
+    parser.add_argument("--dpi", type=int, default=300)
+    parser.add_argument("--label-snps")
+    parser.add_argument("--sig-color", default="black")
+    parser.add_argument("--qq-only", action="store_true")
+    return parser
 
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Run the plotting CLI."""
+    args = create_parser().parse_args(argv)
     if args.qq_only:
         create_qq(
             input_file=args.input,
@@ -197,7 +163,7 @@ Examples:
             title=args.title,
             width=args.width,
             height=args.height,
-            dpi=args.dpi
+            dpi=args.dpi,
         )
     else:
         create_manhattan(
@@ -212,9 +178,10 @@ Examples:
             height=args.height,
             dpi=args.dpi,
             label_snps=args.label_snps,
-            sig_color=args.sig_color
+            sig_color=args.sig_color,
         )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

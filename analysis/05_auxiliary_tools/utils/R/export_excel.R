@@ -22,11 +22,9 @@ export_to_excel <- function(
     format_dates = TRUE
 ) {
 
-  # Load required package
   if (!requireNamespace("writexl", quietly = TRUE)) {
-    install.packages("writexl", repos = "https://cran.rstudio.com/")
+    stop("Package 'writexl' is required. Restore dependencies from renv.lock.")
   }
-  library(writexl)
 
   # Create output directory if needed
   output_dir <- dirname(output_path)
@@ -41,7 +39,8 @@ export_to_excel <- function(
   }
 
   # Write file
-  write_xlsx(data, path = output_path)
+  workbook <- stats::setNames(list(data), sheet_name)
+  writexl::write_xlsx(workbook, path = output_path, col_names = col_names)
 
   # Report
   file_size <- file.size(output_path) / 1024
@@ -73,9 +72,8 @@ export_to_excel <- function(
 export_sheets_to_excel <- function(sheet_list, output_path, sheet_names = NULL) {
 
   if (!requireNamespace("writexl", quietly = TRUE)) {
-    install.packages("writexl", repos = "https://cran.rstudio.com/")
+    stop("Package 'writexl' is required. Restore dependencies from renv.lock.")
   }
-  library(writexl)
 
   # Create directory
   output_dir <- dirname(output_path)
@@ -92,7 +90,8 @@ export_sheets_to_excel <- function(sheet_list, output_path, sheet_names = NULL) 
   }
 
   # Write workbook
-  write_xlsx(sheet_list, path = output_path)
+  names(sheet_list) <- sheet_names
+  writexl::write_xlsx(sheet_list, path = output_path)
 
   message(sprintf(
     "[%s] Exported %d sheets to: %s",

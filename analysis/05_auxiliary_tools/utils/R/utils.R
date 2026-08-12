@@ -28,7 +28,7 @@
 NULL
 
 # Module version
-UTILS_VERSION <- "1.0.0"
+UTILS_VERSION <- "0.1.0"
 
 # Module description
 UTILS_DESCRIPTION <- "Auxiliary data processing tools for GWAS analysis"
@@ -55,6 +55,7 @@ load_utils <- function(module_dir = NULL, quiet = FALSE) {
     pattern = "\\.R$",
     full.names = TRUE
   )
+  r_files <- r_files[!basename(r_files) %in% c("cli_driver.R", "utils.R")]
 
   # Source each file
   for (f in r_files) {

@@ -2,7 +2,7 @@
 #' @description Read data from text/tab-separated files with flexible options
 #' @param file_path Path to the input file (supports .txt, .tsv, .gz)
 #' @param header Logical: does the file have header row? Default TRUE
-#' @param sep Separator character. Options: "auto", "\\t", "\\s+", ","
+#' @param sep Separator character. Options: "auto", "\\t", "", ","
 #' @param na.strings Character vector of strings to be interpreted as NA
 #' @param check.names Logical: should column names be syntactically valid? Default FALSE
 #' @param stringsAsFactors Logical: convert strings to factors? Default FALSE
@@ -89,14 +89,18 @@ detect_separator <- function(file_path) {
   # Read first few lines
   lines <- readLines(file_path, n = 5)
 
-  # Count separators
-  tab_count <- sum(sapply(lines, function(x) length(gregexpr("\t", x)[[1]])))
-  comma_count <- sum(sapply(lines, function(x) length(gregexpr(",", x)[[1]])))
-  space_count <- sum(sapply(lines, function(x) length(gregexpr("\\s+", x)[[1]])))
+  # Count separators without treating a failed regex match as one occurrence.
+  count_matches <- function(pattern, value, fixed = FALSE) {
+    matches <- gregexpr(pattern, value, fixed = fixed)
+    sum(vapply(matches, function(hit) sum(hit > 0), integer(1)))
+  }
+  tab_count <- count_matches("\t", lines, fixed = TRUE)
+  comma_count <- count_matches(",", lines, fixed = TRUE)
+  space_count <- count_matches("[[:space:]]+", lines)
 
   # Return most common separator
   counts <- c(tab = tab_count, comma = comma_count, space = space_count)
-  sep_names <- c("\\t", ",", "\\s+")
+  sep_names <- c("\t", ",", "")
 
   return(sep_names[which.max(counts)])
 }

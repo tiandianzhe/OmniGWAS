@@ -1,7 +1,7 @@
 #' ---
 #' title: Manhattan Plot Module for GWAS Results Visualization
 #' description: Generate publication-ready Manhattan plots from GWAS summary statistics
-#' author: WorkBuddy AI Assistant
+#' author: OmniGWAS contributors
 #' date: 2026-04-08
 #' ---
 
@@ -10,16 +10,19 @@
 # Main function for generating Manhattan plots
 # ============================================
 
-#' Install and Load Required Packages
+#' Require Project Packages
 #' @param pkgs Character vector of package names
-#' @return NULL (packages are loaded in the environment)
-install_and_load <- function(pkgs) {
-  for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) {
-      install.packages(p, repos = "https://cloud.r-project.org")
-    }
+#' @return NULL
+require_packages <- function(pkgs) {
+  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing) > 0) {
+    stop(
+      "Missing required R packages: ",
+      paste(missing, collapse = ", "),
+      ". Restore dependencies from renv.lock."
+    )
   }
-  invisible(lapply(pkgs, library, character.only = TRUE))
+  invisible(NULL)
 }
 
 #' Create Manhattan Plot
@@ -67,48 +70,77 @@ create_manhattan_plot <- function(
     base_family = "Arial"
 ) {
 
-  # Install and load required packages
-  install_and_load(c("data.table", "dplyr", "ggplot2", "ggrepel", "scales"))
+  require_packages(c("data.table", "dplyr", "ggplot2", "ggrepel", "scales"))
+
+  if (!threshold_type %in% c("pvalue", "fdr")) {
+    stop("threshold_type must be 'pvalue' or 'fdr'")
+  }
+  if (!is.numeric(threshold) || length(threshold) != 1 ||
+      is.na(threshold) || threshold <= 0 || threshold > 1) {
+    stop("threshold must be in the interval (0, 1]")
+  }
 
   # Data validation
   required_cols <- c("SNP", "CHR", "BP")
-  if (!pval_col %in% names(data) && is.null(fdr_col)) {
-    stop("Either pval_col or fdr_col must be present in data")
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  if (threshold_type == "pvalue" && !pval_col %in% names(data)) {
+    stop("P-value column not found: ", pval_col)
+  }
+  if (threshold_type == "fdr" && is.null(fdr_col) && !pval_col %in% names(data)) {
+    stop("A P-value column is required when FDR values must be calculated")
+  }
+  if (!is.null(fdr_col) && !fdr_col %in% names(data)) {
+    stop("FDR column not found: ", fdr_col)
   }
 
   # Prepare data
   df <- data.table::as.data.table(data)
   df$CHR <- as.numeric(df$CHR)
 
-  # Calculate -log10(P) or use FDR
-  if (!is.null(fdr_col) && fdr_col %in% names(df)) {
+  # Prepare P and FDR values, then plot the selected threshold scale.
+  if (pval_col %in% names(df)) {
+    df$P <- df[[pval_col]]
+    df$P[df$P == 0] <- 1e-300
+  }
+  if (!is.null(fdr_col)) {
     df$FDR <- df[[fdr_col]]
-    df$FDR[df$FDR == 0] <- 1e-300
+  } else {
+    df$FDR <- stats::p.adjust(df$P, method = "BH")
+  }
+  df$FDR[df$FDR == 0] <- 1e-300
+
+  if (threshold_type == "fdr") {
     df$logP <- -log10(df$FDR)
     y_label <- expression(-log[10](FDR))
   } else {
-    df$P <- df[[pval_col]]
-    df$P[df$P == 0] <- 1e-300
     df$logP <- -log10(df$P)
     y_label <- expression(-log[10](P))
   }
 
   # Remove NAs and order
-  df <- df[!is.na(CHR) & !is.na(BP)]
+  df <- df[!is.na(CHR) & !is.na(BP) & !is.na(logP)]
+  if (nrow(df) == 0) {
+    stop("No valid rows remain after filtering chromosome, position, and P values")
+  }
   df <- df[order(CHR, BP)]
 
   # Calculate cumulative positions
-  chr_info <- df %>%
-    dplyr::group_by(CHR) %>%
-    dplyr::summarise(chr_len = max(as.numeric(BP), na.rm = TRUE), .groups = "drop") %>%
-    dplyr::arrange(CHR) %>%
-    dplyr::mutate(chr_start = lag(cumsum(as.numeric(chr_len)), default = 0))
+  chr_info <- df |>
+    dplyr::group_by(CHR) |>
+    dplyr::summarise(chr_len = max(as.numeric(BP), na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(CHR) |>
+    dplyr::mutate(
+      chr_start = dplyr::lag(cumsum(as.numeric(chr_len)), default = 0)
+    )
 
-  df <- df %>%
-    dplyr::left_join(chr_info, by = "CHR") %>%
-    dplyr::mutate(BP_cum = BP + chr_start)
+  df <- df |>
+    dplyr::left_join(chr_info, by = "CHR") |>
+    dplyr::mutate(BP_cum = as.numeric(BP) + chr_start)
 
-  axis_df <- chr_info %>%
+  axis_df <- chr_info |>
     dplyr::mutate(center = chr_start + chr_len / 2)
 
   # Determine significance column and threshold
@@ -216,6 +248,10 @@ create_manhattan_plot <- function(
     )
 
   # Save plot
+  output_dir <- dirname(output)
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
   ggplot2::ggsave(
     filename = output,
     plot = p,
@@ -253,11 +289,18 @@ create_qq_plot <- function(
     dpi = 300
 ) {
 
-  install_and_load(c("ggplot2", "data.table"))
+  require_packages(c("ggplot2", "data.table"))
+
+  if (!pval_col %in% names(data)) {
+    stop("P-value column not found: ", pval_col)
+  }
 
   df <- data.table::as.data.table(data)
   pvalues <- df[[pval_col]]
-  pvalues <- pvalues[!is.na(pvalues) & pvalues > 0]
+  pvalues <- pvalues[!is.na(pvalues) & pvalues > 0 & pvalues <= 1]
+  if (length(pvalues) == 0) {
+    stop("No valid P values in the interval (0, 1]")
+  }
 
   n <- length(pvalues)
   obs_logp <- -log10(sort(pvalues))
@@ -269,7 +312,8 @@ create_qq_plot <- function(
   )
 
   # Calculate lambda (genomic inflation factor)
-  lambda <- median(qchisq(pvalues, df = 1, lower.tail = FALSE, log.p = TRUE)) / median(qchisq(0.5, df = 1, lower.tail = FALSE, log.p = TRUE))
+  lambda <- stats::median(stats::qchisq(pvalues, df = 1, lower.tail = FALSE)) /
+    stats::qchisq(0.5, df = 1, lower.tail = FALSE)
   lambda_text <- sprintf("lambda = %.3f", lambda)
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$expected, y = .data$observed)) +
@@ -289,6 +333,10 @@ create_qq_plot <- function(
       axis.title = ggplot2::element_text(color = "black")
     )
 
+  output_dir <- dirname(output)
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
   ggplot2::ggsave(output, p, width = width, height = height, dpi = dpi)
   message("QQ plot saved to: ", output)
   invisible(p)
