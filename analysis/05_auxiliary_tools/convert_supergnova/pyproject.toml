@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77,<82", "wheel>=0.45,<0.46"]
+requires = ["setuptools==80.10.2", "wheel==0.45.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Convert SuperGNOVA TXT results to CSV format for GWAS analysis"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Dianzhe Tian", email = "tiandianzhe@outlook.com"}
 ]

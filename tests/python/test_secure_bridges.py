@@ -43,14 +43,15 @@ def test_gsmap_values_remain_json_data(tmp_path: Path, monkeypatch: pytest.Monke
     h5ad_dir.mkdir()
     captured = _capture_run(monkeypatch, gsmap)
 
-    gsmap.run_batch_gsmap(
-        sample_names=[ATTACK_TEXT],
-        sumstats_file=str(sumstats),
-        trait_name=ATTACK_TEXT,
-        h5ad_dir=str(h5ad_dir),
-        save_base_path=str(tmp_path / "results"),
-        verbose=False,
-    )
+    with pytest.raises(RuntimeError, match="did not write the expected result file"):
+        gsmap.run_batch_gsmap(
+            sample_names=[ATTACK_TEXT],
+            sumstats_file=str(sumstats),
+            trait_name=ATTACK_TEXT,
+            h5ad_dir=str(h5ad_dir),
+            save_base_path=str(tmp_path / "results"),
+            verbose=False,
+        )
 
     payload = _assert_fixed_json_driver(captured, gsmap.R_DRIVER)
     assert payload["sample_names"] == [ATTACK_TEXT]
@@ -63,13 +64,14 @@ def test_smr_values_remain_json_data(tmp_path: Path, monkeypatch: pytest.MonkeyP
     outcome.touch()
     captured = _capture_run(monkeypatch, smr)
 
-    smr.run_smr_dynamic_batch(
-        xqtl_resources=[ATTACK_TEXT],
-        out_filename=str(outcome),
-        outcome_name=ATTACK_TEXT,
-        save_base_path=str(tmp_path / "results"),
-        verbose=False,
-    )
+    with pytest.raises(RuntimeError, match="did not write the expected result file"):
+        smr.run_smr_dynamic_batch(
+            xqtl_resources=[ATTACK_TEXT],
+            out_filename=str(outcome),
+            outcome_name=ATTACK_TEXT,
+            save_base_path=str(tmp_path / "results"),
+            verbose=False,
+        )
 
     payload = _assert_fixed_json_driver(captured, smr.R_DRIVER)
     assert payload["xqtl_resources"] == [ATTACK_TEXT]
@@ -110,6 +112,16 @@ def test_yaml_resource_lists_reject_scalar_values() -> None:
         smr._string_list("resource-one", "xqtl_resources")
 
 
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, None])
+def test_yaml_boolean_values_are_not_coerced(value: Any) -> None:
+    with pytest.raises(ValueError, match="YAML boolean"):
+        gsmap._as_bool(value, "stop_on_error")
+    with pytest.raises(ValueError, match="YAML boolean"):
+        smr._as_bool(value, "quick_smr")
+    assert gsmap._as_bool(False, "stop_on_error") is False
+    assert smr._as_bool(True, "quick_smr") is True
+
+
 def test_batch_identifiers_reject_path_traversal() -> None:
     with pytest.raises(ValueError, match="path separators"):
         gsmap._validate_path_components(["../../outside"], "sample_names")
@@ -124,6 +136,72 @@ def test_all_wrapper_cli_parsers_construct() -> None:
     assert manhattan.create_parser().prog == "python -m manhattan_plot.src"
     assert gsmap.create_parser().prog == "python -m batch_gsmap.src"
     assert smr.create_parser().prog == "python -m batch_smr_dynamic.src"
+
+
+@pytest.mark.parametrize(
+    ("module", "result", "total_key"),
+    [
+        (
+            gsmap,
+            {"success_count": 1, "failed_count": 0, "total_samples": 1},
+            "total_samples",
+        ),
+        (
+            smr,
+            {"success_count": 1, "failed_count": 0, "total_resources": 1},
+            "total_resources",
+        ),
+    ],
+)
+def test_batch_clis_succeed_only_with_stable_zero_failure_counts(
+    module: Any,
+    result: dict[str, int],
+    total_key: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_file = tmp_path / "input.rds"
+    input_file.touch()
+    h5ad_dir = tmp_path / "h5ad"
+    h5ad_dir.mkdir()
+    if module is gsmap:
+        monkeypatch.setattr(module, "run_batch_gsmap", lambda **_: result)
+        argv = [
+            "--samples",
+            "sample",
+            "--sumstats",
+            str(input_file),
+            "--trait",
+            "trait",
+            "--h5ad-dir",
+            str(h5ad_dir),
+            "--quiet",
+        ]
+    else:
+        monkeypatch.setattr(module, "run_smr_dynamic_batch", lambda **_: result)
+        argv = [
+            "--resources",
+            "resource",
+            "--out-filename",
+            str(input_file),
+            "--outcome-name",
+            "trait",
+            "--quiet",
+        ]
+    assert module.main(argv) == 0
+
+    result["failed_count"] = 1
+    assert module.main(argv) == 1
+
+    result.pop("failed_count")
+    assert module.main(argv) == 1
+
+    result["failed_count"] = False
+    assert module.main(argv) == 1
+
+    result["failed_count"] = 0
+    result[total_key] = 2
+    assert module.main(argv) == 1
 
 
 def test_runnable_r_sources_do_not_install_dependencies() -> None:

@@ -71,7 +71,8 @@ exp1 <- easyGWAS::get_full_psychencode_data(
 ### 2.3 TWAS分析
 ```r
 # 安装MetaXcan
-easyGWAS::install_metaxcan()
+# 在运行分析前，从经过审核且版本固定的发布物单独配置 MetaXcan。
+# 不要在分析脚本中执行下载或安装操作。
 
 # 查看可用模型
 easyMR::GTEX_v8_info

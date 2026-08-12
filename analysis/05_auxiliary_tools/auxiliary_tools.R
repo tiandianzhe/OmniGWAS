@@ -86,9 +86,8 @@ saveRDS(NASH, file = output_file)
 
 ### 5.5 蛋白组学MR
 ```r
-# 安装R2BGLiMS包
-library(devtools)
-devtools::install_github("pjnewcombe/R2BGLiMS", force = TRUE)
+# 在运行分析前单独恢复并审核 R2BGLiMS。固定提交示例：
+# pjnewcombe/R2BGLiMS@0842f6cb81691d14957a38db78040f07af146410
 
 # PWMR3分析
 ?PWMR3

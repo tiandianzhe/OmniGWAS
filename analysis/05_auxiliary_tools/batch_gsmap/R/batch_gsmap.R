@@ -75,7 +75,7 @@ run_gsmap_batch <- function(
     if (!requireNamespace("easyGWAS", quietly = TRUE)) {
       stop(
         "Optional package 'easyGWAS' is required for gsMap execution. ",
-        "Install it explicitly and review its GPL-3.0-or-later license."
+        "Obtain a compatible version from an authorized source and review its license."
       )
     }
     if (!"run_gsmap_quick_mode" %in% getNamespaceExports("easyGWAS")) {
@@ -133,6 +133,12 @@ run_gsmap_batch <- function(
         status = "failed",
         error = fail_msg
       )
+      if (stop_on_error) {
+        if (verbose) {
+          close(pb)
+        }
+        stop("Stopped on missing h5ad input at sample: ", sample_name)
+      }
       next
     }
 
@@ -290,9 +296,15 @@ generate_batch_summary <- function(
 #'
 #' @export
 parse_sample_names <- function(h5ad_dir, pattern = "*.MOSTA.h5ad") {
-  files <- list.files(h5ad_dir, pattern = pattern, full.names = FALSE)
-  sample_names <- gsub(pattern, "\\1", gsub("\\.MOSTA\\.h5ad$", "", files))
-  return(sample_names)
+  if (!dir.exists(h5ad_dir)) {
+    stop("H5AD directory not found: ", h5ad_dir)
+  }
+  files <- list.files(
+    h5ad_dir,
+    pattern = utils::glob2rx(pattern),
+    full.names = FALSE
+  )
+  sort(sub("\\.MOSTA\\.h5ad$", "", files))
 }
 
 
@@ -342,18 +354,37 @@ export_batch_results <- function(results, output_dir, format = "both") {
     if (!requireNamespace("jsonlite", quietly = TRUE)) {
       stop("Package 'jsonlite' is required. Restore dependencies from renv.lock.")
     }
+    serialize_detail <- function(detail) {
+      serialized <- list(status = jsonlite::unbox(detail$status))
+      if (!is.null(detail$output_dir)) {
+        serialized$output_dir <- jsonlite::unbox(detail$output_dir)
+      }
+      if (!is.null(detail$error)) {
+        serialized$error <- jsonlite::unbox(detail$error)
+      }
+      serialized
+    }
+    details <- lapply(results$details, serialize_detail)
+    if (length(details) == 0) {
+      details <- structure(list(), names = character())
+    }
+    trait <- if (nrow(results$summary) > 0) results$summary$trait[[1]] else NA_character_
     json_results <- list(
-      trait = results$summary$trait[1],
-      total_samples = length(results$success) + length(results$failed),
-      success_count = length(results$success),
-      failed_count = length(results$failed),
-      success_list = results$success,
-      failed_list = results$failed,
-      details = results$details,
-      timestamp = as.character(Sys.time())
+      status = jsonlite::unbox("completed"),
+      trait = jsonlite::unbox(trait),
+      total_samples = jsonlite::unbox(
+        length(results$success) + length(results$failed)
+      ),
+      success_count = jsonlite::unbox(length(results$success)),
+      failed_count = jsonlite::unbox(length(results$failed)),
+      success_list = I(unname(results$success)),
+      failed_list = I(unname(results$failed)),
+      details = details,
+      timestamp = jsonlite::unbox(as.character(Sys.time()))
     )
     jsonlite::write_json(json_results,
                          file.path(output_dir, "batch_results.json"),
+                         auto_unbox = FALSE,
                          pretty = TRUE)
   }
 

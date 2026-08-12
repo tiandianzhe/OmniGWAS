@@ -11,9 +11,9 @@
 library(easyGWAS)
 library(devtools)
 
-# 安装本地R包
-devtools::install_local('C:/Users/onekey/TwoSampleMR.zip')
-remotes::install_github("mrcieu/ieugwasr")
+# 在运行分析前单独恢复并审核研究专用依赖。不要在分析脚本中安装本地包。
+# 如需从 GitHub 安装 ieugwasr，请固定并审核完整提交，例如：
+# mrcieu/ieugwasr@c28eaf6db8a6ebd4cf44eb698ff9fd8ef2557dd8
 
 # 配置OpenGWAS API密钥
 Sys.setenv(OPENGWAS_JWT = "your_jwt_token")

@@ -25,6 +25,16 @@ require_packages <- function(pkgs) {
   invisible(NULL)
 }
 
+
+coerce_numeric_column <- function(values, column_name) {
+  numeric_values <- suppressWarnings(as.numeric(as.character(values)))
+  if (length(numeric_values) == 0 || any(is.na(numeric_values)) ||
+      any(!is.finite(numeric_values))) {
+    stop(column_name, " must contain only finite numeric values")
+  }
+  numeric_values
+}
+
 #' Create Manhattan Plot
 #'
 #' @param data Data frame with columns: SNP, CHR, BP, P (or FDR)
@@ -34,7 +44,7 @@ require_packages <- function(pkgs) {
 #' @param threshold_type "pvalue" or "fdr" (default: "fdr")
 #' @param color_palette Color palette for chromosomes (default: rainbow gradient)
 #' @param label_snps Vector of SNP IDs to label (default: significant SNPs)
-#' @param genomewideline Add genome-wide significance line (default: TRUE)
+#' @param genomewideline Add the conventional P=5e-8 line in p-value mode
 #' @param suggestiveline Add suggestive line (default: TRUE)
 #' @param title Plot title (default: "Manhattan Plot")
 #' @param width Plot width (default: 12)
@@ -81,16 +91,10 @@ create_manhattan_plot <- function(
   }
 
   # Data validation
-  required_cols <- c("SNP", "CHR", "BP")
+  required_cols <- unique(c("SNP", "CHR", "BP", pval_col))
   missing_cols <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
-  }
-  if (threshold_type == "pvalue" && !pval_col %in% names(data)) {
-    stop("P-value column not found: ", pval_col)
-  }
-  if (threshold_type == "fdr" && is.null(fdr_col) && !pval_col %in% names(data)) {
-    stop("A P-value column is required when FDR values must be calculated")
   }
   if (!is.null(fdr_col) && !fdr_col %in% names(data)) {
     stop("FDR column not found: ", fdr_col)
@@ -98,15 +102,29 @@ create_manhattan_plot <- function(
 
   # Prepare data
   df <- data.table::as.data.table(data)
-  df$CHR <- as.numeric(df$CHR)
+  if (any(is.na(df$SNP)) || any(!nzchar(as.character(df$SNP)))) {
+    stop("SNP must contain non-empty identifiers")
+  }
+  df$CHR <- coerce_numeric_column(df$CHR, "CHR")
+  df$BP <- coerce_numeric_column(df$BP, "BP")
+  if (any(df$CHR <= 0) || any(df$CHR != floor(df$CHR))) {
+    stop("CHR must contain positive whole numbers")
+  }
+  if (any(df$BP <= 0) || any(df$BP != floor(df$BP))) {
+    stop("BP must contain positive whole-number positions")
+  }
 
   # Prepare P and FDR values, then plot the selected threshold scale.
-  if (pval_col %in% names(df)) {
-    df$P <- df[[pval_col]]
-    df$P[df$P == 0] <- 1e-300
+  df$P <- coerce_numeric_column(df[[pval_col]], pval_col)
+  if (any(df$P < 0 | df$P > 1)) {
+    stop(pval_col, " must contain values in the interval [0, 1]")
   }
+  df$P[df$P == 0] <- 1e-300
   if (!is.null(fdr_col)) {
-    df$FDR <- df[[fdr_col]]
+    df$FDR <- coerce_numeric_column(df[[fdr_col]], fdr_col)
+    if (any(df$FDR < 0 | df$FDR > 1)) {
+      stop(fdr_col, " must contain values in the interval [0, 1]")
+    }
   } else {
     df$FDR <- stats::p.adjust(df$P, method = "BH")
   }
@@ -120,11 +138,7 @@ create_manhattan_plot <- function(
     y_label <- expression(-log[10](P))
   }
 
-  # Remove NAs and order
-  df <- df[!is.na(CHR) & !is.na(BP) & !is.na(logP)]
-  if (nrow(df) == 0) {
-    stop("No valid rows remain after filtering chromosome, position, and P values")
-  }
+  # Order validated rows
   df <- df[order(CHR, BP)]
 
   # Calculate cumulative positions
@@ -247,6 +261,23 @@ create_manhattan_plot <- function(
       panel.grid.minor = ggplot2::element_blank()
     )
 
+  if (threshold_type == "pvalue" && genomewideline) {
+    p <- p + ggplot2::geom_hline(
+      yintercept = -log10(5e-8),
+      linetype = 3,
+      linewidth = 0.4,
+      color = "#B2182B"
+    )
+  }
+  if (threshold_type == "pvalue" && suggestiveline) {
+    p <- p + ggplot2::geom_hline(
+      yintercept = -log10(1e-5),
+      linetype = 3,
+      linewidth = 0.4,
+      color = "#636363"
+    )
+  }
+
   # Save plot
   output_dir <- dirname(output)
   if (!dir.exists(output_dir)) {
@@ -296,10 +327,9 @@ create_qq_plot <- function(
   }
 
   df <- data.table::as.data.table(data)
-  pvalues <- df[[pval_col]]
-  pvalues <- pvalues[!is.na(pvalues) & pvalues > 0 & pvalues <= 1]
-  if (length(pvalues) == 0) {
-    stop("No valid P values in the interval (0, 1]")
+  pvalues <- coerce_numeric_column(df[[pval_col]], pval_col)
+  if (any(pvalues <= 0 | pvalues > 1)) {
+    stop(pval_col, " must contain values in the interval (0, 1]")
   }
 
   n <- length(pvalues)

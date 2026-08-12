@@ -28,6 +28,20 @@ class SuperGNOVAConverter:
     COLUMNS = ["chr", "start", "end", "rho", "corr", "h2_1", "h2_2", "var", "p", "m"]
     EXPECTED_COL_COUNT = 10
 
+    @staticmethod
+    def _looks_like_spreadsheet_formula(value: str) -> bool:
+        """Reject active spreadsheet formula prefixes while allowing signed numbers."""
+        if not value:
+            return False
+        if value[0] in {"=", "@"}:
+            return True
+        if value[0] in {"+", "-"}:
+            try:
+                float(value)
+            except ValueError:
+                return True
+        return False
+
     def __init__(self, txt_path: str, csv_path: Optional[str] = None):
         """
         Initialize the converter.
@@ -86,13 +100,21 @@ class SuperGNOVAConverter:
                 self.total_lines += 1
                 data = line.strip().split()
 
-                if len(data) == self.EXPECTED_COL_COUNT:
+                rejection_reason = None
+                if len(data) != self.EXPECTED_COL_COUNT:
+                    rejection_reason = (
+                        f"expected {self.EXPECTED_COL_COUNT} fields, found {len(data)}"
+                    )
+                elif any(self._looks_like_spreadsheet_formula(value) for value in data):
+                    rejection_reason = "contains a spreadsheet-formula-like field"
+
+                if rejection_reason is None:
                     writer.writerow(data)
                     self.converted_lines += 1
                 else:
-                    self.skipped_lines.append((line_num, line.strip()))
+                    self.skipped_lines.append((line_num, rejection_reason))
                     if not skip_warnings:
-                        print(f"Warning: Skipping malformed line {line_num}: {line.strip()[:80]}")
+                        print(f"Warning: Skipping line {line_num}: {rejection_reason}")
 
         return self.get_stats()
 
@@ -106,7 +128,7 @@ class SuperGNOVAConverter:
             "input_path": str(self.txt_path),
         }
 
-    def print_report(self) -> None:
+    def print_report(self, include_skipped_details: bool = True) -> None:
         """Print a formatted conversion report."""
         stats = self.get_stats()
         print("\n" + "=" * 50)
@@ -119,10 +141,10 @@ class SuperGNOVAConverter:
         print(f"Skipped    : {stats['skipped_lines']}")
         print("=" * 50)
 
-        if self.skipped_lines:
+        if self.skipped_lines and include_skipped_details:
             print("\nSkipped lines (first 5):")
-            for line_num, content in self.skipped_lines[:5]:
-                print(f"  Line {line_num}: {content[:80]}...")
+            for line_num, reason in self.skipped_lines[:5]:
+                print(f"  Line {line_num}: {reason}")
             if len(self.skipped_lines) > 5:
                 print(f"  ... and {len(self.skipped_lines) - 5} more")
 
@@ -148,5 +170,5 @@ def convert_supergnova_to_csv(txt_path: str, csv_path: Optional[str] = None,
     """
     converter = SuperGNOVAConverter(txt_path, csv_path)
     stats = converter.convert(skip_warnings=skip_warnings)
-    converter.print_report()
+    converter.print_report(include_skipped_details=not skip_warnings)
     return stats

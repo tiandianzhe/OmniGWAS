@@ -92,7 +92,7 @@ run_smr_dynamic_batch <- function(
     if (!requireNamespace("easyGWAS", quietly = TRUE)) {
       stop(
         "Optional package 'easyGWAS' is required for SMR execution. ",
-        "Install it explicitly and review its GPL-3.0-or-later license."
+        "Obtain a compatible version from an authorized source and review its license."
       )
     }
     if (!"batch_xqtl_smr" %in% getNamespaceExports("easyGWAS")) {
@@ -280,6 +280,52 @@ generate_smr_summary <- function(
 }
 
 
+#' Export stable batch SMR results as JSON
+#'
+#' @param results Result object returned by run_smr_dynamic_batch
+#' @param output_dir Directory in which to write smr_batch_results.json
+#' @param outcome_name Name of the outcome trait
+#' @export
+export_smr_batch_results <- function(results, output_dir, outcome_name) {
+  if (!requireNamespace("jsonlite", quietly = TRUE)) {
+    stop("Package 'jsonlite' is required. Restore dependencies from renv.lock.")
+  }
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+  serialize_detail <- function(detail) {
+    serialized <- list(status = jsonlite::unbox(detail$status))
+    if (!is.null(detail$output_dir)) {
+      serialized$output_dir <- jsonlite::unbox(detail$output_dir)
+    }
+    if (!is.null(detail$error)) {
+      serialized$error <- jsonlite::unbox(detail$error)
+    }
+    serialized
+  }
+  details <- lapply(results$details, serialize_detail)
+  if (length(details) == 0) {
+    details <- structure(list(), names = character())
+  }
+  payload <- list(
+    status = jsonlite::unbox("completed"),
+    outcome_name = jsonlite::unbox(outcome_name),
+    total_resources = jsonlite::unbox(
+      length(results$success) + length(results$failed)
+    ),
+    success_count = jsonlite::unbox(length(results$success)),
+    failed_count = jsonlite::unbox(length(results$failed)),
+    success_list = I(unname(results$success)),
+    failed_list = I(unname(results$failed)),
+    details = details,
+    output_dir = jsonlite::unbox(output_dir)
+  )
+  output_file <- file.path(output_dir, "smr_batch_results.json")
+  jsonlite::write_json(payload, output_file, auto_unbox = FALSE, pretty = TRUE)
+  invisible(output_file)
+}
+
+
 
 
 #' Parse xQTL resources from dynamic immune cell datasets
@@ -301,49 +347,39 @@ parse_dynamic_resources <- function(
     timepoints = c("0h", "16h", "40h", "5d"),
     cell_types = NULL
 ) {
-
-  # Define cell types with dynamic data
-  cell_type_base <- c(
-    "CD4_Memory", "CD4_Naive",
-    "TN", "TN_cycling", "TN_HSP", "TN_IFN", "TN_NFKB",
-    "TEM", "TEM_HLApositive", "TEMRA",
-    "TCM", "nTreg", "TM", "HSP"
+  if (!identical(dataset, "dynamic_immune")) {
+    stop("Only the documented 'dynamic_immune' resource catalog is supported")
+  }
+  resources <- c(
+    "CD4_Memory_stim_16h", "CD4_Memory_stim_40h", "CD4_Memory_stim_5d",
+    "CD4_Memory_uns_0h", "CD4_Naive_uns_0h", "CD4_Naive_stim_16h",
+    "CD4_Naive_stim_40h", "CD4_Naive_stim_5d", "HSP_16h",
+    "nTreg_0h", "nTreg_16h", "nTreg_40h", "T_ER-stress_5d",
+    "TCM_0h", "TCM_16h", "TCM_40h", "TCM_5d", "TCM_LA",
+    "TEM_0h", "TEM_16h", "TEM_40h", "TEM_5d",
+    "TEM_HLApositive_40h", "TEM_HLApositive_5d", "TEM_LA",
+    "TEMRA_0h", "TEMRA_16h", "TEMRA_40h", "TEMRA_5d", "TEMRA_LA",
+    "TM_cycling_5d", "TM_ER-stress_40h", "TN2_40h",
+    "TN_0h", "TN_16h", "TN_40h", "TN_5d",
+    "TN_cycling_40h", "TN_cycling_5d", "TN_HSP_5d",
+    "TN_IFN_16h", "TN_IFN_40h", "TN_IFN_5d", "TN_IFN_LA",
+    "TN_LA", "TN_NFKB"
   )
 
-  # Filter cell types if specified
+  suffix <- sub("^.*_", "", resources)
+  resources <- resources[suffix %in% c(timepoints, "LA", "NFKB")]
+
   if (!is.null(cell_types)) {
-    cell_type_base <- cell_type_base[grepl(paste(cell_types, collapse = "|"),
-                                           cell_type_base)]
-  }
-
-  # Generate resources
-  resources <- c()
-
-  for (ct in cell_type_base) {
-    # Special cases without timepoint
-    if (ct %in% c("HSP_16h", "TM_cycling_5d", "TM_ER-stress_40h",
-                  "TN2_40h", "TN_HSP_5d", "TN_IFN_LA", "TN_LA",
-                  "TN_NFKB", "TCM_LA", "TEM_LA", "TEMRA_LA",
-                  "TEM_HLApositive_40h", "TEM_HLApositive_5d",
-                  "nTreg_0h", "nTreg_16h", "nTreg_40h",
-                  "T_ER-stress_5d")) {
-      resources <- c(resources, ct)
-    } else {
-      # Add timepoint suffix
-      for (tp in timepoints) {
-        resources <- c(resources, paste0(ct, "_", tp))
-      }
+    if (!is.character(cell_types) || length(cell_types) == 0 ||
+        any(!nzchar(cell_types))) {
+      stop("cell_types must be a non-empty character vector when supplied")
     }
+    keep <- vapply(resources, function(resource) {
+      any(resource == cell_types | startsWith(resource, paste0(cell_types, "_")))
+    }, logical(1))
+    resources <- resources[keep]
   }
-
-  # Add LA (long-term activated) resources
-  la_resources <- c(
-    "TCM_LA", "TEM_LA", "TEMRA_LA",
-    "TN_IFN_LA", "TN_LA"
-  )
-
-  resources <- unique(c(resources, la_resources))
-  return(sort(resources))
+  sort(resources)
 }
 
 

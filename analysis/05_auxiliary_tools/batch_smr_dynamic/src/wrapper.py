@@ -101,11 +101,10 @@ def run_smr_dynamic_batch(
     if result_file.is_file():
         with result_file.open("r", encoding="utf-8") as handle:
             return json.load(handle)
-    return {
-        "status": "completed",
-        "n_resources": len(xqtl_resources),
-        "output_dir": str(output_dir),
-    }
+    raise RuntimeError(
+        "R batch SMR driver exited successfully but did not write "
+        f"the expected result file: {result_file}"
+    )
 
 
 def get_default_dynamic_resources() -> List[str]:
@@ -160,6 +159,13 @@ def _string_list(value: Any, name: str) -> List[str]:
         raise ValueError(f"{name} must be a non-empty YAML list")
     if not all(isinstance(item, str) and item.strip() for item in value):
         raise ValueError(f"Every {name} entry must be a non-empty string")
+    return value
+
+
+def _as_bool(value: Any, name: str) -> bool:
+    """Require a real YAML boolean instead of applying Python truthiness."""
+    if type(value) is not bool:
+        raise ValueError(f"{name} must be a YAML boolean (true or false)")
     return value
 
 
@@ -222,11 +228,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             "diff_freq_prop": float(config.get("diff_freq_prop", 0.9)),
             "diff_freq": float(config.get("diff_freq", 0.2)),
             "ancestry": config.get("ancestry", "EUR"),
-            "quick_smr": bool(config.get("quick_smr", True)),
+            "quick_smr": _as_bool(config.get("quick_smr", True), "quick_smr"),
             "smr_HEIDI_p": float(config.get("smr_HEIDI_p", 0.05)),
             "plot_col": config.get("plot_col", "#B4D151"),
             "plot_highlight_col": config.get("plot_highlight_col", "#8680C0"),
-            "stop_on_error": bool(config.get("stop_on_error", False)),
+            "stop_on_error": _as_bool(
+                config.get("stop_on_error", False),
+                "stop_on_error",
+            ),
         }
     else:
         if args.resources:
@@ -270,8 +279,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         **values,
     )
     if verbose:
-        print(f"Processed resources: {result.get('n_resources', len(resources))}")
-    return 0
+        print(f"Processed resources: {result.get('total_resources', len(resources))}")
+        print(f"Failed: {result.get('failed_count', 'N/A')}")
+    success_count = result.get("success_count")
+    failed_count = result.get("failed_count")
+    total_resources = result.get("total_resources")
+    counts_are_valid = (
+        type(success_count) is int
+        and type(failed_count) is int
+        and type(total_resources) is int
+        and success_count >= 0
+        and failed_count >= 0
+        and total_resources == success_count + failed_count
+    )
+    return 0 if counts_are_valid and failed_count == 0 else 1
 
 
 if __name__ == "__main__":

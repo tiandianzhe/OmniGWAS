@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,10 +27,18 @@ def _r_has(packages: list[str]) -> bool:
     return result.returncode == 0
 
 
+def _require_r(packages: list[str]) -> None:
+    if _r_has(packages):
+        return
+    message = "R and required locked packages are unavailable: " + ", ".join(packages)
+    if os.environ.get("OMNIGWAS_REQUIRE_R") == "1":
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 @pytest.mark.integration
 def test_json_stdin_prevents_r_source_injection(tmp_path: Path) -> None:
-    if not _r_has(["jsonlite"]):
-        pytest.skip("R and jsonlite are required")
+    _require_r(["jsonlite"])
     input_file = tmp_path / "input.tsv"
     input_file.write_text("SNP\tP\nrs1\t0.05\n", encoding="utf-8")
     attack = '\"); stop("injected"); #\nnot-code'
@@ -44,8 +53,7 @@ def test_json_stdin_prevents_r_source_injection(tmp_path: Path) -> None:
 @pytest.mark.integration
 def test_plotting_bridge_creates_real_files(tmp_path: Path) -> None:
     packages = ["jsonlite", "data.table", "dplyr", "ggplot2", "ggrepel", "scales"]
-    if not _r_has(packages):
-        pytest.skip("The locked R plotting environment is required")
+    _require_r(packages)
     input_file = tmp_path / "gwas.csv"
     input_file.write_text(
         "SNP,CHR,BP,P\nrs1,1,100,0.5\nrs2,1,200,0.001\nrs3,2,100,0.02\n",

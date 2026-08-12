@@ -65,7 +65,10 @@ jobs:
             analysis/05_auxiliary_tools/convert_supergnova/example/example_data.txt \
             --output /tmp/supergnova-output.csv \
             --quiet
-          test -s /tmp/supergnova-output.csv
+          cmp /tmp/supergnova-output.csv \
+            analysis/05_auxiliary_tools/convert_supergnova/example/expected_output.csv
+          python -c \
+            'import glob, zipfile; path=glob.glob("dist/*.whl")[0]; names=zipfile.ZipFile(path).namelist(); assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names), names'
 
   r-and-bridge:
     name: R and Python to R bridge
@@ -84,7 +87,9 @@ jobs:
       - name: Restore locked R environment
         uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2.12.1
       - name: Check R dependency state
-        run: Rscript -e 'renv::status()'
+        run: >-
+          Rscript -e
+          'status <- renv::status(); if (!isTRUE(status$synchronized)) quit(status = 1)'
       - name: Parse R modules and recipe chunks
         run: Rscript scripts/ci/check_r_sources.R
       - name: Reject runtime dependency installation
@@ -104,6 +109,8 @@ jobs:
       - name: Restore locked Python environment
         run: uv sync --locked --all-groups
       - name: Run cross-language functional tests
+        env:
+          OMNIGWAS_REQUIRE_R: "1"
         run: uv run --frozen pytest -q tests/python/test_r_bridge_integration.py
       - name: Validate repository YAML
         run: |

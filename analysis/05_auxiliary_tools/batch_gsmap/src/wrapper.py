@@ -88,7 +88,10 @@ def run_batch_gsmap(
     if result_file.is_file():
         with result_file.open("r", encoding="utf-8") as handle:
             return json.load(handle)
-    return {"status": "completed", "message": "Batch analysis finished"}
+    raise RuntimeError(
+        "R batch gsMap driver exited successfully but did not write "
+        f"the expected result file: {result_file}"
+    )
 
 
 def parse_sample_names_from_dir(
@@ -126,6 +129,13 @@ def _as_string_list(value: Any, name: str) -> List[str]:
         raise ValueError(f"{name} must be a non-empty YAML list")
     if not all(isinstance(item, str) and item.strip() for item in value):
         raise ValueError(f"Every {name} entry must be a non-empty string")
+    return value
+
+
+def _as_bool(value: Any, name: str) -> bool:
+    """Require a real YAML boolean instead of applying Python truthiness."""
+    if type(value) is not bool:
+        raise ValueError(f"{name} must be a YAML boolean (true or false)")
     return value
 
 
@@ -180,7 +190,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         data_layer = config.get("data_layer", "count")
         max_processes = int(config.get("max_processes", 10))
         save_base_path = config.get("save_base_path", ".")
-        stop_on_error = bool(config.get("stop_on_error", False))
+        stop_on_error = _as_bool(config.get("stop_on_error", False), "stop_on_error")
     else:
         if args.samples:
             sample_names = args.samples
@@ -223,7 +233,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     if verbose:
         print(f"Success: {results.get('success_count', 'N/A')}")
         print(f"Failed: {results.get('failed_count', 'N/A')}")
-    return 0
+    success_count = results.get("success_count")
+    failed_count = results.get("failed_count")
+    total_samples = results.get("total_samples")
+    counts_are_valid = (
+        type(success_count) is int
+        and type(failed_count) is int
+        and type(total_samples) is int
+        and success_count >= 0
+        and failed_count >= 0
+        and total_samples == success_count + failed_count
+    )
+    return 0 if counts_are_valid and failed_count == 0 else 1
 
 
 if __name__ == "__main__":

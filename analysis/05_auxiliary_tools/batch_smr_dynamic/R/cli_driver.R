@@ -41,18 +41,8 @@ result <- run_smr_dynamic_batch(
   stop_on_error = isTRUE(payload$stop_on_error)
 )
 
-summary_payload <- list(
-  status = "completed",
-  n_resources = length(payload$xqtl_resources),
-  success_count = length(result$success),
-  failed_count = length(result$failed),
-  success = result$success,
-  failed = result$failed,
-  output_dir = payload$save_base_path
-)
-jsonlite::write_json(
-  summary_payload,
-  file.path(payload$save_base_path, "smr_batch_results.json"),
-  auto_unbox = TRUE,
-  pretty = TRUE
+export_smr_batch_results(
+  result,
+  output_dir = payload$save_base_path,
+  outcome_name = payload$outcome_name
 )
