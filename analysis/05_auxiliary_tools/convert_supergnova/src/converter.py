@@ -18,10 +18,8 @@ Output columns:
 """
 
 import csv
-import os
-import sys
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 
 class SuperGNOVAConverter:
@@ -42,13 +40,16 @@ class SuperGNOVAConverter:
             Path to the output CSV file. If None, replaces .txt with .csv.
         """
         self.txt_path = Path(txt_path)
-        if not self.txt_path.exists():
+        if not self.txt_path.is_file():
             raise FileNotFoundError(f"Input file not found: {self.txt_path}")
 
         if csv_path:
             self.csv_path = Path(csv_path)
         else:
             self.csv_path = self.txt_path.with_suffix(".csv")
+
+        if self.txt_path.resolve() == self.csv_path.resolve():
+            raise ValueError("Input and output paths must be different")
 
         self.skipped_lines: List[Tuple[int, str]] = []
         self.total_lines = 0
@@ -73,10 +74,12 @@ class SuperGNOVAConverter:
         self.total_lines = 0
         self.converted_lines = 0
 
-        with open(self.txt_path, "r", encoding="utf-8") as txt_file, \
-             open(self.csv_path, "w", newline="", encoding="utf-8") as csv_file:
+        self.csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-            writer = csv.writer(csv_file)
+        with self.txt_path.open("r", encoding="utf-8") as txt_file, \
+             self.csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+
+            writer = csv.writer(csv_file, lineterminator="\n")
             writer.writerow(self.COLUMNS)
 
             for line_num, line in enumerate(txt_file, start=1):
@@ -147,26 +150,3 @@ def convert_supergnova_to_csv(txt_path: str, csv_path: Optional[str] = None,
     stats = converter.convert(skip_warnings=skip_warnings)
     converter.print_report()
     return stats
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Convert SuperGNOVA TXT results to CSV format."
-    )
-    parser.add_argument("input", help="Input TXT file path")
-    parser.add_argument("-o", "--output", help="Output CSV file path", default=None)
-    parser.add_argument("-q", "--quiet", action="store_true",
-                        help="Suppress warnings for malformed rows")
-
-    args = parser.parse_args()
-
-    try:
-        convert_supergnova_to_csv(args.input, args.output, skip_warnings=args.quiet)
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)

@@ -1,14 +1,12 @@
 """Unit tests for SuperGNOVA converter."""
 
 import os
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from converter import SuperGNOVAConverter, convert_supergnova_to_csv
+from convert_supergnova import SuperGNOVAConverter, convert_supergnova_to_csv
 
 
 class TestSuperGNOVAConverter:
@@ -91,6 +89,19 @@ class TestSuperGNOVAConverter:
         """Test that FileNotFoundError is raised for missing input."""
         with pytest.raises(FileNotFoundError):
             SuperGNOVAConverter("nonexistent_file.txt")
+
+    def test_repository_fixture_matches_expected_output(self, tmp_path):
+        """Keep the public validation fixture deterministic."""
+        module_root = Path(__file__).parent.parent
+        input_path = module_root / "example" / "example_data.txt"
+        expected_path = module_root / "example" / "expected_output.csv"
+        output_path = tmp_path / "output.csv"
+
+        SuperGNOVAConverter(str(input_path), str(output_path)).convert(
+            skip_warnings=True
+        )
+
+        assert output_path.read_bytes() == expected_path.read_bytes()
 
 
 class TestConvenienceFunction:

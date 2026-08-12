@@ -1,0 +1,45 @@
+[project]
+name = "omnigwas-development"
+version = "0.1.0"
+description = "Locked development and test environment for OmniGWAS"
+requires-python = ">=3.10"
+dependencies = [
+    "convert-supergnova",
+    "PyYAML>=6,<7",
+]
+
+[dependency-groups]
+dev = [
+    "build>=1.3,<2",
+    "pytest>=8,<9",
+    "pytest-cov>=6,<8",
+    "ruff>=0.12,<0.14",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+convert-supergnova = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "analysis/05_auxiliary_tools/convert_supergnova",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests/python",
+    "analysis/05_auxiliary_tools/convert_supergnova/tests",
+]
+pythonpath = ["analysis/05_auxiliary_tools"]
+markers = [
+    "integration: requires the locked R environment",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
