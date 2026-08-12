@@ -1,5 +1,6 @@
 # OmniGWAS utils Configuration Example
-# This file demonstrates common data processing workflows
+# This file illustrates possible multi-step workflows. The v0.1.0 utils CLI
+# accepts one operation at a time and does not execute this file directly.
 
 # Example 1: Read and Convert GWAS Data
 example_1:

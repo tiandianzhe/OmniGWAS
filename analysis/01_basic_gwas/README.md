@@ -6,7 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `basic_gwas.R` | 基础GWAS分析完整代码 |
+| `basic_gwas.R` | Markdown 格式的研究流程参考，不是可直接 `source()` 的 R 模块 |
 
 ## 功能分类
 
@@ -42,17 +42,7 @@
 
 ## 使用方法
 
-```r
-# 加载基础GWAS分析函数
-source("analysis/01_basic_gwas/basic_gwas.R")
-
-# 示例：提取GWAS显著位点
-HCC_loci <- get_loci(
-  outcome_file = "path/to/HCC_full_outcome.rds",
-  ld_clump = TRUE,
-  p_threshold = 5e-08
-)
-```
+请把 `basic_gwas.R` 作为研究 recipe 阅读。选择所需的 fenced R 代码块，逐项审核依赖版本、数据来源、基因组版本、凭证、路径与统计假设后，再复制到独立分析脚本中执行。不要对该文件运行 `source()`，也不要直接执行其中的示例路径或安装说明。
 
 ## 依赖
 

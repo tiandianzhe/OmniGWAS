@@ -1,0 +1,108 @@
+name: External validation report
+description: Report an independently run OmniGWAS workflow using public or synthetic data.
+title: "[External validation]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for independently testing OmniGWAS. Submit only public or synthetic data and redacted logs. A report must come from a non-maintainer and describe a real run. Maintainers will not create or backfill a report on another person's behalf.
+
+  - type: input
+    id: relationship
+    attributes:
+      label: Relationship to OmniGWAS
+      description: State whether you have contributed code, received instructions from a maintainer, or are otherwise affiliated with the project.
+      placeholder: Independent user; no prior contribution to OmniGWAS
+    validations:
+      required: true
+
+  - type: input
+    id: revision
+    attributes:
+      label: Tested revision
+      description: Provide the exact release tag or full commit SHA.
+      placeholder: v0.1.0 or 40-character commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Tested module
+      options:
+        - convert_supergnova
+        - utils
+        - manhattan_plot
+        - batch_gsmap
+        - batch_smr_dynamic
+        - Other documented workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: List the operating system, architecture, Python version, R version, and relevant locked dependency state.
+      placeholder: macOS 15 arm64; Python 3.13; R 4.5; uv.lock and renv.lock restored
+    validations:
+      required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Public or synthetic input
+      description: Identify the public dataset and URL, or explain how the synthetic fixture was generated. Do not upload private genomic or clinical data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: commands
+    attributes:
+      label: Exact commands
+      description: Provide commands sufficient to repeat the run. Replace private local paths with safe placeholders and remove all credentials.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      description: Only a successful, independently verifiable run is recorded as an external-use signal. Partial and failed runs remain useful bug reports.
+      options:
+        - Passed
+        - Partially passed
+        - Failed
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Results and verifiable evidence
+      description: Describe observed outputs and attach a redacted log, checksum, small output artifact, or link to a public downstream repository or CI run.
+    validations:
+      required: true
+
+  - type: textarea
+    id: deviations
+    attributes:
+      label: Deviations from documentation
+      description: List any command, code, dependency, or configuration changes needed to complete the run. Enter "None" if there were no deviations.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: attestations
+    attributes:
+      label: Attestations
+      options:
+        - label: I am not the OmniGWAS owner or a core maintainer, and this report describes a run I performed.
+          required: true
+        - label: The report contains no credentials, private data, or identifiable human data.
+          required: true
+        - label: The commands, environment, outcome, and evidence accurately describe this run.
+          required: true
+        - label: I permit this public issue to be cited as an external validation record.
+          required: true

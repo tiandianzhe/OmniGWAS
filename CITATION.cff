@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use OmniGWAS, cite this software record and the specific upstream methods used by your workflow."
+title: OmniGWAS
+type: software
+authors:
+  - family-names: Tian
+    given-names: Dianzhe
+    orcid: "https://orcid.org/0009-0006-3618-9054"
+version: "0.1.0"
+repository-code: "https://github.com/tiandianzhe/OmniGWAS"
+url: "https://github.com/tiandianzhe/OmniGWAS"
+license: MIT
+abstract: "A modular R and Python toolkit for reproducible GWAS and post-GWAS research workflows."
+keywords:
+  - GWAS
+  - post-GWAS
+  - bioinformatics
+  - statistical genetics
+  - R
+  - Python

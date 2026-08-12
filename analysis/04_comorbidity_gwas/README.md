@@ -6,7 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `comorbidity_gwas.R` | 共病GWAS分析完整代码 |
+| `comorbidity_gwas.R` | Markdown 格式的研究流程参考，不是可直接 `source()` 的 R 模块 |
 
 ## 功能分类
 
@@ -51,18 +51,7 @@
 
 ## 使用方法
 
-```r
-# 加载共病分析函数
-source("analysis/04_comorbidity_gwas/comorbidity_gwas.R")
-
-# 示例：双样本MR
-mr_modified(
-  exp_filenames = "path/to/exposure.rds",
-  out_filenames = "path/to/outcome.rds",
-  exp = "Exposure",
-  out = "Outcome"
-)
-```
+请把 `comorbidity_gwas.R` 作为研究 recipe 阅读。选择所需的 fenced R 代码块，逐项审核依赖版本、暴露与结局数据、样本重叠、祖源、参考面板、路径与统计假设后，再复制到独立分析脚本中执行。不要对该文件运行 `source()`。
 
 ## 依赖
 

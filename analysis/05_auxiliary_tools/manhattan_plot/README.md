@@ -1,146 +1,98 @@
 # manhattan_plot
 
-> Manhattan plot and Q-Q plot visualization for GWAS results
+Version 0.1.0
 
-**Assisted by WorkBuddy AI Assistant** | Version 1.0.0
+`manhattan_plot` provides maintained R functions and a Python wrapper for Manhattan and Q-Q plot generation from GWAS summary statistics.
 
----
+## Input contract
 
-## Overview
+The input must be a CSV or delimited text file with these columns:
 
-This module provides tools for generating publication-ready Manhattan plots and Q-Q plots from GWAS summary statistics. It combines the flexibility of R's ggplot2 with Python's ease of use.
+| Column | Requirement |
+| --- | --- |
+| `SNP` | Required variant identifier |
+| `CHR` | Required numeric chromosome |
+| `BP` | Required base-pair position |
+| `P` | Required P value |
 
-## Features
+`CHR` and `BP` must be positive whole numbers. `P` and any supplied `FDR` values must be finite and lie in `[0, 1]`; Q-Q plots require `P` in `(0, 1]`. Invalid rows fail explicitly instead of being silently dropped. An `FDR` column is optional. When no FDR column is supplied, the Manhattan function computes Benjamini-Hochberg adjusted values from `P`. The default `threshold_type=fdr` uses those adjusted values. Use `threshold_type=pvalue` to threshold directly on `P`.
 
-- Publication-ready Manhattan plots with customizable parameters
-- Q-Q plot generation with genomic inflation factor (lambda) calculation
-- Batch processing for multiple analyses
-- Support for both P-values and FDR values
-- Custom SNP labeling
-- Flexible color schemes
-- High-resolution output (up to 600 DPI)
+## Reproducible setup
 
-## Installation
+Run the locked project setup from the repository root:
 
-### R Dependencies
-
-The module requires the following R packages (auto-installed on first run):
-
-```r
-data.table, dplyr, ggplot2, ggrepel, scales
+```sh
+uv sync --locked --all-groups
+Rscript -e 'renv::restore(prompt=FALSE)'
 ```
 
-### Python Dependencies
+The R lock contains the maintained plotting dependencies, including `jsonlite`, `data.table`, `dplyr`, `ggplot2`, `ggrepel`, and `scales`.
 
-```bash
-pip install -r requirements.txt
+## Command line
+
+Run the wrapper from `analysis/05_auxiliary_tools`:
+
+```sh
+cd analysis/05_auxiliary_tools
+
+# Manhattan plot using BH-adjusted FDR
+../../.venv/bin/python -m manhattan_plot.src \
+  --input manhattan_plot/example/example_data.csv \
+  --output manhattan.png \
+  --threshold 0.05
+
+# Manhattan plot using the raw P-value threshold
+../../.venv/bin/python -m manhattan_plot.src \
+  --input manhattan_plot/example/example_data.csv \
+  --output manhattan-pvalue.png \
+  --threshold-type pvalue \
+  --threshold 5e-8
+
+# Q-Q plot
+../../.venv/bin/python -m manhattan_plot.src \
+  --input manhattan_plot/example/example_data.csv \
+  --output qq.png \
+  --qq-only
 ```
 
-## Quick Start
+Use `--fdr-col FDR` when the input already contains adjusted values. Other options include `--label-snps`, `--title`, `--width`, `--height`, `--dpi`, and `--sig-color`.
 
-### Python API
+## Python API
 
 ```python
-from manhattan_plot.src import wrapper
+from manhattan_plot.src.wrapper import create_manhattan, create_qq
 
-# Create Manhattan plot
-wrapper.create_manhattan(
-    input_file="your_data.csv",
+create_manhattan(
+    input_file="gwas.csv",
     output="manhattan.png",
-    fdr_col="FDR",
-    threshold=0.05
+    threshold=0.05,
+    threshold_type="fdr",
 )
 
-# Create Q-Q plot
-wrapper.create_qq(
-    input_file="your_data.csv",
-    output="qq_plot.png",
-    pval_col="P"
+create_qq(
+    input_file="gwas.csv",
+    output="qq.png",
 )
 ```
 
-### R API
+## R API
+
+From `analysis/05_auxiliary_tools`:
 
 ```r
-source("R/manhattan_plot.R")
+source("manhattan_plot/R/manhattan_plot.R")
 
-# Load your data
-data <- read.csv("your_data.csv")
-
-# Create Manhattan plot
-create_manhattan_plot(
-  data = data,
-  fdr_col = "FDR",
-  threshold = 0.05,
-  output = "manhattan.png"
-)
+data <- read.csv("manhattan_plot/example/example_data.csv")
+create_manhattan_plot(data, output = "manhattan.png")
+create_qq_plot(data, output = "qq.png")
 ```
 
-### Command Line
+## Validation and security boundary
 
-```bash
-# Basic usage
-python -m src.wrapper --input data.csv --fdr_col FDR --threshold 0.05
+Cross-language integration tests run the Python wrapper through the fixed R driver and verify that real, nonempty Manhattan and Q-Q PNG files are produced. Caller values are encoded as JSON on standard input. The wrapper does not generate executable R source or predictable temporary R scripts.
 
-# With p-value threshold
-python -m src.wrapper --input data.csv --pval_col P --threshold 5e-8 --threshold_type pvalue
-
-# Custom output
-python -m src.wrapper --input data.csv --output my_plot.png --width 14 --height 6 --dpi 600
-
-# Label specific SNPs
-python -m src.wrapper --input data.csv --label_snps rs123456,rs234567,rs345678
-```
-
-## Input Data Format
-
-The input file should be a CSV or tab-delimited TXT with the following columns:
-
-| Column | Description | Required |
-|--------|-------------|----------|
-| SNP | SNP identifier (rsID) | Yes |
-| CHR | Chromosome number (1-22, X, Y) | Yes |
-| BP | Base pair position | Yes |
-| P | P-value | Yes (or FDR) |
-| FDR | False discovery rate | Yes (or P) |
-
-Example:
-
-```csv
-SNP,CHR,BP,P,FDR
-rs123456,1,100000,0.001,0.05
-rs234567,1,200000,0.0001,0.01
-rs345678,2,100000,0.5,0.8
-```
-
-## Parameters
-
-### create_manhattan_plot (R) / create_manhattan (Python)
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| threshold | 0.05 | Significance threshold |
-| threshold_type | "fdr" | "fdr" or "pvalue" |
-| sig_point_color | "black" | Color for significant points |
-| sig_point_size | 0.8 | Size of significant points |
-| nonsig_point_size | 0.5 | Size of non-significant points |
-| label_fontsize | 3 | Font size for SNP labels |
-| width | 12 | Plot width in inches |
-| height | 6 | Plot height in inches |
-| dpi | 300 | Resolution |
-| title | "Manhattan Plot" | Plot title |
-
-## Output
-
-The module generates high-quality PNG images suitable for publication:
-
-- Manhattan plot: Chromosome-wide view with significance threshold
-- Q-Q plot: Observed vs expected P-value distribution with lambda
-
-## Example Output
-
-See `example/example_data.csv` for sample input data.
+The smoke tests validate the maintained plotting path on the public example. They do not establish the suitability of a plot or statistical threshold for a particular study.
 
 ## License
 
-Part of OmniGWAS toolkit. MIT License.
+This module is part of OmniGWAS and uses the repository MIT license.

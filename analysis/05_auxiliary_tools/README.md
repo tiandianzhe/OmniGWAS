@@ -6,7 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `auxiliary_tools.R` | 辅助分析工具完整代码 |
+| `auxiliary_tools.R` | Markdown 格式的研究流程参考，不是可直接 `source()` 的 R 模块 |
 
 ## 功能分类
 
@@ -44,17 +44,7 @@
 
 ## 使用方法
 
-```r
-# 加载辅助工具
-source("analysis/05_auxiliary_tools/auxiliary_tools.R")
-
-# 数据处理示例
-library(writexl)
-write_xlsx(data, "output.xlsx")
-
-# 数据清洗
-data_clean <- data %>% select(-any_of(c("col1", "col2")))
-```
+请把 `auxiliary_tools.R` 作为研究 recipe 阅读。选择所需的 fenced R 代码块，逐项审核依赖版本、输入数据、输出覆盖行为、网络访问与路径后，再复制到独立分析脚本中执行。不要对该文件运行 `source()`。可维护且可直接调用的工具位于本目录各子模块的 `R/` 与 `src/` 中。
 
 ## 依赖
 

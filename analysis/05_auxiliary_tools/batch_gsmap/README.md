@@ -1,211 +1,104 @@
 # batch_gsmap
 
-> Batch gsMap spatial transcriptomics GWAS colocalization analysis module for OmniGWAS toolkit.
+Version 0.1.0, Experimental
 
-**Powered by WorkBuddy AI Assistant**
+`batch_gsmap` is an experimental Python and R adapter for running an easyGWAS gsMap workflow over multiple spatial-transcriptomics samples. It validates local paths, records per-sample outcomes, and writes batch summaries.
 
-## Overview
+## Support boundary
 
-This module provides tools for running [gsMap](https://github.com/gaozhangyang/gsMap) spatial transcriptomics GWAS colocalization analysis across multiple samples in batch mode. It supports parallel processing, error handling, and comprehensive result logging.
+The adapter calls `easyGWAS::run_gsmap_quick_mode`. easyGWAS is optional, is not bundled with OmniGWAS, and is intentionally excluded from the core `renv.lock`. OmniGWAS does not currently document a publicly accessible authoritative easyGWAS distribution. Use only a compatible version obtained from a source you are authorized to access, then verify its source, version, license, and integrity. The required gsMap resources, reference data, and study data are also not bundled.
 
-## Features
+CI covers the JSON Python-to-R boundary and the R batch logic with a mock runner. CI does not claim end-to-end validation against research datasets, external gsMap resources, or an installed easyGWAS workflow.
 
-- Batch processing of multiple spatial transcriptomics samples
-- Parallel execution with configurable process limits
-- Comprehensive error handling and logging
-- Configurable via YAML files
-- Export results to CSV and JSON formats
-- Integration with Python CLI and R API
+## Reproducible setup
 
-## Installation
+Run the locked core setup from the repository root:
 
-### Python Dependencies
-
-```bash
-pip install pyyaml
+```sh
+uv sync --locked --all-groups
+Rscript -e 'renv::restore(prompt=FALSE)'
 ```
 
-### R Dependencies
+This restores the tested wrapper environment. It does not install the optional easyGWAS dependency.
 
-```r
-# Install required R packages
-install.packages("yaml")
-install.packages("jsonlite")
+## Command line
 
-# Install gsMap package (follow gsMap documentation)
-# devtools::install_github("gaozhangyang/gsMap")
+Run the wrapper from `analysis/05_auxiliary_tools`:
+
+```sh
+cd analysis/05_auxiliary_tools
+
+../../.venv/bin/python -m batch_gsmap.src \
+  --samples Sample1 Sample2 \
+  --sumstats path/to/gwas.sumstats.gz \
+  --trait ExampleTrait \
+  --h5ad-dir path/to/h5ad \
+  --output path/to/results \
+  --max-processes 4
 ```
 
-## Quick Start
+Each sample is resolved as `<h5ad-dir>/<sample>.MOSTA.h5ad`. Samples can also come from `--samples-file`, `--samples-dir`, or a YAML configuration:
 
-### Python CLI
-
-```bash
-# Method 1: Specify samples directly
-python -m batch_gsmap.src \
-    --samples E9.5_E1S1 E10.5_E1S1 E11.5_E1S1 \
-    --sumstats GWAS.sumstats.gz \
-    --trait NAFLD \
-    --h5ad-dir /data/ST/ \
-    --output /results/NAFLD/
-
-# Method 2: Auto-detect samples from h5ad directory
-python -m batch_gsmap.src \
-    --samples-dir /data/ST/ \
-    --sumstats GWAS.sumstats.gz \
-    --trait NAFLD \
-    --h5ad-dir /data/ST/ \
-    --output /results/NAFLD/
-
-# Method 3: Use configuration file
-python -m batch_gsmap.src --config config.yaml
+```sh
+../../.venv/bin/python -m batch_gsmap.src \
+  --config batch_gsmap/example/config.yaml
 ```
 
-### Python API
+A configuration mapping uses these primary keys:
+
+```yaml
+samples:
+  - Sample1
+  - Sample2
+sumstats_file: path/to/gwas.sumstats.gz
+trait_name: ExampleTrait
+h5ad_dir: path/to/h5ad
+annotation: annotation
+data_layer: count
+max_processes: 4
+save_base_path: path/to/results
+stop_on_error: false
+```
+
+## Python API
 
 ```python
-from batch_gsmap.src import wrapper
+from batch_gsmap.src.wrapper import run_batch_gsmap
 
-# Run batch analysis
-result = wrapper.run_batch_gsmap(
-    sample_names=["E9.5_E1S1", "E10.5_E1S1", "E11.5_E1S1"],
-    sumstats_file="GWAS.sumstats.gz",
-    trait_name="NAFLD",
-    h5ad_dir="/data/ST/",
-    save_base_path="/results/NAFLD/",
-    max_processes=10
+result = run_batch_gsmap(
+    sample_names=["Sample1", "Sample2"],
+    sumstats_file="path/to/gwas.sumstats.gz",
+    trait_name="ExampleTrait",
+    h5ad_dir="path/to/h5ad",
+    save_base_path="path/to/results",
+    max_processes=4,
 )
-
-print(f"Success: {len(result['success_list'])}")
-print(f"Failed: {len(result['failed_list'])}")
 ```
 
-### R API
+## R API
 
 ```r
 source("batch_gsmap/R/batch_gsmap.R")
 
-# Define sample names
-sample_names <- c(
-  "E9.5_E1S1", "E9.5_E2S1", "E9.5_E2S2",
-  "E10.5_E1S1", "E10.5_E1S2",
-  "E11.5_E1S1", "E11.5_E1S2"
-)
-
-# Run batch analysis
 result <- run_gsmap_batch(
-  sample_names = sample_names,
-  sumstats_file = "GWAS.sumstats.gz",
-  trait_name = "NAFLD",
-  h5ad_dir = "/data/ST/",
-  annotation = "annotation",
-  data_layer = "count",
-  max_processes = 10,
-  save_base_path = "/results/NAFLD/"
+  sample_names = c("Sample1", "Sample2"),
+  sumstats_file = "path/to/gwas.sumstats.gz",
+  trait_name = "ExampleTrait",
+  h5ad_dir = "path/to/h5ad",
+  save_base_path = "path/to/results"
 )
-
-# Access results
-print(result$success)
-print(result$failed)
 ```
 
-## Configuration
+The R function accepts an optional `runner` function for isolated testing. When `runner=NULL`, it resolves `easyGWAS::run_gsmap_quick_mode`.
 
-### YAML Configuration File
+## Outputs
 
-Create a `config.yaml` file:
+A run writes `batch_summary.csv`, `batch_results.json`, and one output directory for each sample whose input file was found and whose runner was attempted. The summary also records samples rejected before runner execution. These records describe execution status, not scientific validity. The CLI returns a nonzero status if any sample fails or if the result contract is incomplete.
 
-```yaml
-sumstats_file: "path/to/summary_statistics.gz"
-trait_name: "YourTrait"
-samples:
-  - "Sample1"
-  - "Sample2"
-  - "Sample3"
-h5ad_dir: "path/to/h5ad/files/"
-annotation: "annotation"
-data_layer: "count"
-max_processes: 10
-save_base_path: "path/to/output/"
-```
+## Security boundary
 
-## Output
-
-### Directory Structure
-
-```
-output_dir/
-├── batch_summary.csv          # Summary of all samples
-├── batch_results.json         # Detailed results in JSON format
-├── Sample1/
-│   └── gsMap output files...
-├── Sample2/
-│   └── gsMap output files...
-└── Sample3/
-    └── gsMap output files...
-```
-
-### Summary CSV Format
-
-| sample | status | error_msg | trait | timestamp |
-|--------|--------|-----------|-------|-----------|
-| E9.5_E1S1 | success | NA | NAFLD | 2026-04-08 |
-| E9.5_E2S1 | failed | h5ad not found | NAFLD | 2026-04-08 |
-
-## Module Structure
-
-```
-batch_gsmap/
-├── R/
-│   └── batch_gsmap.R         # Core R functions
-├── src/
-│   ├── __init__.py           # Python module init
-│   └── wrapper.py            # Python CLI/API wrapper
-├── example/
-│   └── config.yaml           # Example configuration
-├── docs/
-│   └── (documentation)
-└── README.md                 # This file
-```
-
-## Key Functions
-
-### R Functions
-
-| Function | Description |
-|----------|-------------|
-| `run_gsmap_batch()` | Execute batch gsMap analysis |
-| `generate_batch_summary()` | Create summary report |
-| `parse_sample_names()` | Extract sample names from h5ad directory |
-| `load_batch_config()` | Load YAML configuration |
-| `export_batch_results()` | Export results to CSV/JSON |
-
-### Python Functions
-
-| Function | Description |
-|----------|-------------|
-| `run_batch_gsmap()` | Run batch analysis from Python |
-| `parse_sample_names_from_dir()` | Auto-detect samples from directory |
-| `load_config()` | Load YAML configuration |
-| `main()` | CLI entry point |
-
-## Development Notes
-
-This module was developed with assistance from **WorkBuddy AI Assistant**, which helped with:
-
-- Module architecture design and code structure
-- R/Python integration patterns
-- Error handling and logging strategies
-- CLI argument parsing
-- Batch processing workflows
+The Python wrapper sends structured JSON to a fixed R driver over standard input. It does not interpolate command-line or YAML values into R source and does not create executable temporary scripts. Paths and third-party datasets should still be treated as untrusted input.
 
 ## License
 
-Same as OmniGWAS toolkit.
-
-## Citation
-
-If you use this module in your research, please cite:
-
-1. gsMap: [Zhang et al., Nature Genetics](https://www.nature.com)
-2. OmniGWAS: [Your Lab/Publication]
+The adapter code is part of OmniGWAS and uses the repository MIT license. easyGWAS, gsMap, datasets, and reference resources retain their own licenses and citation requirements.

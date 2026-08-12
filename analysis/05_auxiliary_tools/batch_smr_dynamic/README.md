@@ -1,225 +1,106 @@
 # batch_smr_dynamic
 
-> Batch SMR (Summary-based Mendelian Randomization) dynamic immune single-cell analysis module for OmniGWAS toolkit.
+Version 0.1.0, Experimental
 
-**Powered by WorkBuddy AI Assistant**
+`batch_smr_dynamic` is an experimental Python and R adapter for applying an easyGWAS SMR workflow across named dynamic immune-cell xQTL resources. It records per-resource execution outcomes and provides utilities for summary, consolidation, and heatmap generation.
 
-## Overview
+## Support boundary
 
-This module provides tools for running SMR analysis across multiple dynamic immune cell populations in batch mode. It processes single-cell eQTL data from various T cell subsets at different timepoints, enabling analysis of dynamic gene expression changes in response to stimulation.
+The adapter calls `easyGWAS::batch_xqtl_smr`. easyGWAS is optional, is not bundled with OmniGWAS, and is intentionally excluded from the core `renv.lock`. OmniGWAS does not currently document a publicly accessible authoritative easyGWAS distribution. Use only a compatible version obtained from a source you are authorized to access, then verify its source, version, license, and integrity. xQTL resources and study GWAS data are not bundled.
 
-## Features
+CI covers the JSON Python-to-R boundary and the R batch logic with a mock runner. CI does not claim end-to-end validation against research datasets, remote xQTL resources, or an installed easyGWAS workflow.
 
-- Batch processing of multiple dynamic immune cell populations
-- Support for time-course data (0h, 16h, 40h, 5d, LA)
-- Integration with easyGWAS::batch_xqtl_smr
-- Comprehensive result consolidation
-- Heatmap visualization of dynamic SMR results
-- Python CLI and R API dual interfaces
+## Reproducible setup
 
-## Prerequisites
+Run the locked core setup from the repository root:
 
-### R Dependencies
-
-```r
-# Install OmniGWAS package
-devtools::install_github("tiandianzhe/easyGWAS")
-
-# Install additional R packages
-install.packages("yaml")
-install.packages("jsonlite")
-install.packages("ggplot2")
+```sh
+uv sync --locked --all-groups
+Rscript -e 'renv::restore(prompt=FALSE)'
 ```
 
-### Python Dependencies
+This restores the tested wrapper and core R environment. It does not install the optional easyGWAS dependency.
 
-```bash
-pip install pyyaml
+## Command line
+
+Run the wrapper from `analysis/05_auxiliary_tools`:
+
+```sh
+cd analysis/05_auxiliary_tools
+
+../../.venv/bin/python -m batch_smr_dynamic.src \
+  --resources TN_0h TN_16h TEM_0h \
+  --out-filename path/to/gwas.rds \
+  --outcome-name ExampleTrait \
+  --output path/to/results
 ```
 
-## Quick Start
+Resources can also come from `--resources-file`, `--default-resources`, or a YAML configuration:
 
-### Python CLI
-
-```bash
-# Method 1: Use all default dynamic immune resources
-python -m batch_smr_dynamic.src \
-    --default-resources \
-    --out-filename GWAS.rds \
-    --outcome-name NAFLD \
-    --output /results/NAFLD/dynamic/
-
-# Method 2: Specify specific resources
-python -m batch_smr_dynamic.src \
-    --resources TN_0h TN_16h TN_40h TEM_0h TEM_16h \
-    --out-filename GWAS.rds \
-    --outcome-name NAFLD \
-    --output /results/
-
-# Method 3: Use configuration file
-python -m batch_smr_dynamic.src --config config.yaml
+```sh
+../../.venv/bin/python -m batch_smr_dynamic.src \
+  --config batch_smr_dynamic/example/config.yaml
 ```
 
-### Python API
+A configuration mapping uses these primary keys:
+
+```yaml
+xqtl_resources:
+  - TN_0h
+  - TN_16h
+out_filename: path/to/gwas.rds
+outcome_name: ExampleTrait
+xqtl_type: sc_eqtl
+save_base_path: path/to/results
+pval: 5.0e-8
+diff_freq_prop: 0.9
+diff_freq: 0.2
+ancestry: EUR
+quick_smr: true
+smr_HEIDI_p: 0.05
+stop_on_error: false
+```
+
+## Python API
 
 ```python
-from batch_smr_dynamic.src import wrapper
-
-# Run batch SMR analysis
-result = wrapper.run_smr_dynamic_batch(
-    xqtl_resources=["TN_0h", "TN_16h", "TN_40h", "TEM_0h", "TEM_16h"],
-    out_filename="GWAS.rds",
-    outcome_name="NAFLD",
-    save_base_path="/results/NAFLD/"
+from batch_smr_dynamic.src.wrapper import (
+    get_default_dynamic_resources,
+    run_smr_dynamic_batch,
 )
 
-# Get default resources
-resources = wrapper.get_default_dynamic_resources()
-print(f"Total resources: {len(resources)}")
+resources = get_default_dynamic_resources()
+result = run_smr_dynamic_batch(
+    xqtl_resources=resources,
+    out_filename="path/to/gwas.rds",
+    outcome_name="ExampleTrait",
+    save_base_path="path/to/results",
+)
 ```
 
-### R API
+## R API
 
 ```r
 source("batch_smr_dynamic/R/batch_smr_dynamic.R")
 
-# Define resources
-xqtl_resources <- c(
-  "TN_0h", "TN_16h", "TN_40h", "TN_5d",
-  "TEM_0h", "TEM_16h", "TEM_40h", "TEM_5d",
-  "TCM_0h", "TCM_16h", "TCM_40h", "TCM_5d"
-)
-
-# Run batch analysis
 result <- run_smr_dynamic_batch(
-    xqtl_resources = xqtl_resources,
-    out_filename = "GWAS.rds",
-    outcome_name = "NAFLD",
-    save_base_path = "/results/NAFLD/"
-)
-
-# Access results
-print(result$success)
-print(result$failed)
-```
-
-## Supported Cell Types and Timepoints
-
-The module supports the following dynamic immune cell populations:
-
-| Cell Type | Timepoints | Description |
-|-----------|------------|-------------|
-| TN | 0h, 16h, 40h, 5d, LA | Naive T cells |
-| TN_cycling | 40h, 5d | Cycling naive T cells |
-| TN_IFN | 16h, 40h, 5d, LA | IFN-stimulated naive T cells |
-| TN_HSP | 5d | HSP-stimulated naive T cells |
-| TN_NFKB | - | NFKB-activated T cells |
-| TEM | 0h, 16h, 40h, 5d, LA | Effector memory T cells |
-| TEM_HLApositive | 40h, 5d | HLA-positive effector memory T cells |
-| TEMRA | 0h, 16h, 40h, 5d, LA | Terminally differentiated RA+ T cells |
-| TCM | 0h, 16h, 40h, 5d, LA | Central memory T cells |
-| nTreg | 0h, 16h, 40h | Natural regulatory T cells |
-| CD4_Memory | uns_0h, stim_16h, stim_40h, stim_5d | CD4 memory T cells |
-| CD4_Naive | uns_0h, stim_16h, stim_40h, stim_5d | CD4 naive T cells |
-| TM | cycling_5d, ER-stress_40h | Transitional memory T cells |
-| HSP | 16h | Heat shock protein stimulated |
-
-## Output
-
-### Directory Structure
-
-```
-output_dir/
-├── smr_batch_summary.csv        # Summary of all resources
-├── TN_0h/
-│   └── SMR results...
-├── TN_16h/
-│   └── SMR results...
-├── TN_40h/
-│   └── SMR results...
-└── ...
-```
-
-### Summary CSV Format
-
-| resource | status | error_msg | trait | timestamp |
-|----------|--------|-----------|-------|-----------|
-| TN_0h | success | NA | NAFLD | 2026-04-08 |
-| TEM_16h | failed | xQTL data not found | NAFLD | 2026-04-08 |
-
-## Consolidation and Visualization
-
-After batch analysis, consolidate results and create visualizations:
-
-```r
-# Consolidate results
-consolidated <- consolidate_dynamic_smr(
-    result_dirs = c("/results/TN_0h", "/results/TN_16h", "/results/TN_40h"),
-    output_file = "consolidated_smr.csv"
-)
-
-# Create heatmap
-plot_dynamic_smr_heatmap(
-    smr_results = consolidated,
-    output_file = "dynamic_smr_heatmap.png"
+  xqtl_resources = c("TN_0h", "TN_16h"),
+  out_filename = "path/to/gwas.rds",
+  outcome_name = "ExampleTrait",
+  save_base_path = "path/to/results"
 )
 ```
 
-## Module Structure
+The R function accepts an optional `runner` function for isolated testing. When `runner=NULL`, it resolves `easyGWAS::batch_xqtl_smr`.
 
-```
-batch_smr_dynamic/
-├── R/
-│   └── batch_smr_dynamic.R      # Core R functions
-├── src/
-│   ├── __init__.py              # Python module init
-│   └── wrapper.py               # Python CLI/API wrapper
-├── example/
-│   └── config.yaml              # Example configuration
-├── docs/
-│   └── (documentation)
-└── README.md                    # This file
-```
+## Outputs and post-processing
 
-## Key Functions
+A wrapper run writes `smr_batch_summary.csv`, `smr_batch_results.json`, and one directory per attempted xQTL resource. The CLI returns a nonzero status if any resource fails or if the result contract is incomplete. The R module also exposes `consolidate_dynamic_smr()` and `plot_dynamic_smr_heatmap()` for local result processing. Output status and plots do not establish causal validity.
 
-### R Functions
+## Security boundary
 
-| Function | Description |
-|----------|-------------|
-| `run_smr_dynamic_batch()` | Execute batch SMR analysis |
-| `generate_smr_summary()` | Create summary report |
-| `parse_dynamic_resources()` | Parse xQTL resources from datasets |
-| `consolidate_dynamic_smr()` | Consolidate results across timepoints |
-| `plot_dynamic_smr_heatmap()` | Create heatmap visualization |
-
-### Python Functions
-
-| Function | Description |
-|----------|-------------|
-| `run_smr_dynamic_batch()` | Run batch analysis from Python |
-| `get_default_dynamic_resources()` | Get all default resources |
-| `parse_resources_by_celltype()` | Group resources by cell type |
-| `load_config()` | Load YAML configuration |
-
-## Development Notes
-
-This module was developed with assistance from **WorkBuddy AI Assistant**, which helped with:
-
-- Module architecture design and code structure
-- R/Python integration patterns
-- Batch processing workflows
-- Result consolidation strategies
-- Visualization utilities
+The Python wrapper sends structured JSON to a fixed R driver over standard input. It does not interpolate command-line or YAML values into R source and does not create executable temporary scripts. Paths, configuration, third-party packages, and data resources should still be treated as untrusted input.
 
 ## License
 
-Same as OmniGWAS toolkit.
-
-## Citation
-
-If you use this module in your research, please cite:
-
-1. OmniGWAS: [Your Lab/Publication]
-2. SMR method: [Zhang et al., AJHG]
-3. Dynamic single-cell eQTL: [Corresponding studies]
+The adapter code is part of OmniGWAS and uses the repository MIT license. easyGWAS, SMR methods, xQTL resources, and study datasets retain their own licenses and citation requirements.
