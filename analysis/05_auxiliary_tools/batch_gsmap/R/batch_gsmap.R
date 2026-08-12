@@ -2,8 +2,8 @@
 #' @description Execute gsMap analysis across multiple spatial transcriptomics samples
 #'              in batch mode. Supports parallel processing and comprehensive result logging.
 #'
-#' @author WorkBuddy AI Assistant
-#' @version 1.0.0
+#' @author OmniGWAS contributors
+#' @version 0.1.0
 #'
 #' @importFrom utils txtProgressBar setTxtProgressBar
 
@@ -19,6 +19,8 @@
 #' @param save_base_path Base directory for saving results
 #' @param verbose Print progress messages (default: TRUE)
 #' @param stop_on_error Stop execution on first error (default: FALSE)
+#' @param runner Optional function used to run one sample. Intended for testing.
+#'               When NULL, easyGWAS::run_gsmap_quick_mode is used.
 #'
 #' @return List with success and failure summaries
 #'
@@ -45,7 +47,8 @@ run_gsmap_batch <- function(
     max_processes = 10,
     save_base_path = ".",
     verbose = TRUE,
-    stop_on_error = FALSE
+    stop_on_error = FALSE,
+    runner = NULL
 ) {
 
   # Validate inputs
@@ -57,13 +60,41 @@ run_gsmap_batch <- function(
     stop("H5AD directory not found: ", h5ad_dir)
   }
 
+  if (length(sample_names) == 0) {
+    stop("At least one sample name is required")
+  }
+  if (any(!nzchar(sample_names)) || any(grepl("[/\\\\]", sample_names)) ||
+      any(sample_names %in% c(".", ".."))) {
+    stop("Sample names must be non-empty path components without separators")
+  }
+  if (anyDuplicated(sample_names)) {
+    stop("Sample names must be unique")
+  }
+
+  if (is.null(runner)) {
+    if (!requireNamespace("easyGWAS", quietly = TRUE)) {
+      stop(
+        "Optional package 'easyGWAS' is required for gsMap execution. ",
+        "Obtain a compatible version from an authorized source and review its license."
+      )
+    }
+    if (!"run_gsmap_quick_mode" %in% getNamespaceExports("easyGWAS")) {
+      stop("The installed easyGWAS package does not export run_gsmap_quick_mode")
+    }
+    runner <- getExportedValue("easyGWAS", "run_gsmap_quick_mode")
+  }
+
+  if (!is.function(runner)) {
+    stop("runner must be a function")
+  }
+
   if (!dir.exists(save_base_path)) {
     dir.create(save_base_path, recursive = TRUE)
   }
 
   # Initialize tracking lists
-  success_list <- c()
-  fail_list <- c()
+  success_list <- character()
+  fail_list <- character()
   result_details <- list()
 
   # Total samples
@@ -97,21 +128,27 @@ run_gsmap_batch <- function(
         message(paste0("\n[", i, "/", n_total, "] SKIP: ", sample_name,
                        " - ", fail_msg))
       }
-      fail_list <- c(fail_list, paste0(sample_name, " (", fail_msg, ")"))
+      fail_list <- c(fail_list, sample_name)
+      result_details[[sample_name]] <- list(
+        status = "failed",
+        error = fail_msg
+      )
+      if (stop_on_error) {
+        if (verbose) {
+          close(pb)
+        }
+        stop("Stopped on missing h5ad input at sample: ", sample_name)
+      }
       next
     }
 
-    # Run gsMap analysis
-    tryCatch({
+    sample_output_dir <- file.path(save_base_path, sample_name)
+    if (!dir.exists(sample_output_dir)) {
+      dir.create(sample_output_dir, recursive = TRUE)
+    }
 
-      # Ensure sample output directory exists
-      sample_output_dir <- file.path(save_base_path, sample_name)
-      if (!dir.exists(sample_output_dir)) {
-        dir.create(sample_output_dir, recursive = TRUE)
-      }
-
-      # Execute gsMap quick mode
-      run_gsmap_quick_mode(
+    attempt <- tryCatch({
+      runner(
         sumstats_file = sumstats_file,
         trait_name = trait_name,
         hdf5_path = hdf5_path,
@@ -121,34 +158,39 @@ run_gsmap_batch <- function(
         max_processes = max_processes,
         save_path = sample_output_dir
       )
+      list(success = TRUE, output_dir = sample_output_dir)
+    }, error = function(e) {
+      list(success = FALSE, error = conditionMessage(e))
+    })
 
+    if (isTRUE(attempt$success)) {
       if (verbose) {
         message(paste0("\n[", i, "/", n_total, "] SUCCESS: ", sample_name))
       }
-
       success_list <- c(success_list, sample_name)
       result_details[[sample_name]] <- list(
         status = "success",
-        output_dir = sample_output_dir
+        output_dir = attempt$output_dir
       )
-
-    }, error = function(e) {
-      fail_msg <- conditionMessage(e)
+    } else {
+      fail_msg <- attempt$error
       if (verbose) {
         message(paste0("\n[", i, "/", n_total, "] FAIL: ", sample_name,
                        " - ", fail_msg))
       }
-      fail_list <- c(fail_list, paste0(sample_name, " (", fail_msg, ")"))
+      fail_list <- c(fail_list, sample_name)
       result_details[[sample_name]] <- list(
         status = "failed",
         error = fail_msg
       )
 
       if (stop_on_error) {
-        close(pb)
+        if (verbose) {
+          close(pb)
+        }
         stop("Stopped on first error at sample: ", sample_name)
       }
-    })
+    }
 
     if (verbose) {
       setTxtProgressBar(pb, i)
@@ -212,20 +254,23 @@ generate_batch_summary <- function(
     save_base_path
 ) {
 
+  failure_messages <- vapply(fail_list, function(sample_name) {
+    error <- result_details[[sample_name]]$error
+    if (is.null(error) || length(error) == 0) "unknown error" else error
+  }, character(1))
+
   summary_df <- data.frame(
-    sample = c(success_list, sapply(strsplit(fail_list, " \\("), `[`, 1)),
+    sample = c(success_list, fail_list),
     status = c(rep("success", length(success_list)),
                rep("failed", length(fail_list))),
     error_msg = c(rep(NA, length(success_list)),
-                 sapply(strsplit(fail_list, "\\("), function(x) {
-                   gsub("\\)$", "", x[2])
-                 })),
+                  failure_messages),
     stringsAsFactors = FALSE
   )
 
   # Add timestamp and trait info
-  summary_df$trait <- trait_name
-  summary_df$timestamp <- Sys.time()
+  summary_df$trait <- rep(trait_name, nrow(summary_df))
+  summary_df$timestamp <- rep(Sys.time(), nrow(summary_df))
 
   # Save to CSV
   summary_file <- file.path(save_base_path, "batch_summary.csv")
@@ -233,6 +278,8 @@ generate_batch_summary <- function(
 
   return(summary_df)
 }
+
+
 
 
 #' Parse sample names from directory
@@ -249,9 +296,15 @@ generate_batch_summary <- function(
 #'
 #' @export
 parse_sample_names <- function(h5ad_dir, pattern = "*.MOSTA.h5ad") {
-  files <- list.files(h5ad_dir, pattern = pattern, full.names = FALSE)
-  sample_names <- gsub(pattern, "\\1", gsub("\\.MOSTA\\.h5ad$", "", files))
-  return(sample_names)
+  if (!dir.exists(h5ad_dir)) {
+    stop("H5AD directory not found: ", h5ad_dir)
+  }
+  files <- list.files(
+    h5ad_dir,
+    pattern = utils::glob2rx(pattern),
+    full.names = FALSE
+  )
+  sort(sub("\\.MOSTA\\.h5ad$", "", files))
 }
 
 
@@ -270,7 +323,7 @@ parse_sample_names <- function(h5ad_dir, pattern = "*.MOSTA.h5ad") {
 #' @export
 load_batch_config <- function(config_file) {
   if (!requireNamespace("yaml", quietly = TRUE)) {
-    install.packages("yaml")
+    stop("Package 'yaml' is required. Restore dependencies from renv.lock.")
   }
   config <- yaml::read_yaml(config_file)
   return(config)
@@ -299,20 +352,39 @@ export_batch_results <- function(results, output_dir, format = "both") {
 
   if (format %in% c("json", "both")) {
     if (!requireNamespace("jsonlite", quietly = TRUE)) {
-      install.packages("jsonlite")
+      stop("Package 'jsonlite' is required. Restore dependencies from renv.lock.")
     }
+    serialize_detail <- function(detail) {
+      serialized <- list(status = jsonlite::unbox(detail$status))
+      if (!is.null(detail$output_dir)) {
+        serialized$output_dir <- jsonlite::unbox(detail$output_dir)
+      }
+      if (!is.null(detail$error)) {
+        serialized$error <- jsonlite::unbox(detail$error)
+      }
+      serialized
+    }
+    details <- lapply(results$details, serialize_detail)
+    if (length(details) == 0) {
+      details <- structure(list(), names = character())
+    }
+    trait <- if (nrow(results$summary) > 0) results$summary$trait[[1]] else NA_character_
     json_results <- list(
-      trait = results$summary$trait[1],
-      total_samples = length(results$success) + length(results$failed),
-      success_count = length(results$success),
-      failed_count = length(results$failed),
-      success_list = results$success,
-      failed_list = results$failed,
-      details = results$details,
-      timestamp = as.character(Sys.time())
+      status = jsonlite::unbox("completed"),
+      trait = jsonlite::unbox(trait),
+      total_samples = jsonlite::unbox(
+        length(results$success) + length(results$failed)
+      ),
+      success_count = jsonlite::unbox(length(results$success)),
+      failed_count = jsonlite::unbox(length(results$failed)),
+      success_list = I(unname(results$success)),
+      failed_list = I(unname(results$failed)),
+      details = details,
+      timestamp = jsonlite::unbox(as.character(Sys.time()))
     )
     jsonlite::write_json(json_results,
                          file.path(output_dir, "batch_results.json"),
+                         auto_unbox = FALSE,
                          pretty = TRUE)
   }
 

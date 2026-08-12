@@ -15,17 +15,19 @@ Example:
 """
 
 from .wrapper import (
-    run_smr_dynamic_batch,
     get_default_dynamic_resources,
-    parse_resources_by_celltype,
     load_config,
-    main as cli_main
+    parse_resources_by_celltype,
+    run_smr_dynamic_batch,
+)
+from .wrapper import (
+    main as cli_main,
 )
 
 __all__ = [
-    "run_smr_dynamic_batch",
+    "cli_main",
     "get_default_dynamic_resources",
-    "parse_resources_by_celltype",
     "load_config",
-    "cli_main"
+    "parse_resources_by_celltype",
+    "run_smr_dynamic_batch",
 ]

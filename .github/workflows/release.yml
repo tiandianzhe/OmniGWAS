@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Restore locked environment
+        run: uv sync --locked --all-groups
+      - name: Set up R
+        uses: r-lib/actions/setup-r@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2.12.1
+        with:
+          r-version: "4.5.3"
+          use-public-rspm: true
+      - name: Restore locked R environment
+        uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2.12.1
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run --frozen python -c \
+            'import os, pathlib, tomllib; expected=os.environ["RELEASE_TAG"].removeprefix("v"); files=[pathlib.Path("pyproject.toml"), pathlib.Path("analysis/05_auxiliary_tools/convert_supergnova/pyproject.toml")]; actual=[tomllib.loads(path.read_text())["project"]["version"] for path in files]; assert all(version == expected for version in actual), (actual, expected)'
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if grep -Eiq 'unreleased|release candidate' "release-notes/${RELEASE_TAG}.md"; then
+            echo "Release notes still contain pre-release status language" >&2
+            exit 1
+          fi
+      - name: Test and build release artifacts
+        env:
+          OMNIGWAS_REQUIRE_R: "1"
+        run: |
+          Rscript -e 'status <- renv::status(); if (!isTRUE(status$synchronized)) quit(status = 1)'
+          Rscript scripts/ci/check_r_sources.R
+          Rscript scripts/ci/check_r_dependencies.R
+          Rscript -e 'testthat::test_dir("tests/r", reporter = "summary")'
+          python -m compileall -q analysis/05_auxiliary_tools tests/python
+          uv run --frozen ruff check .
+          uv run --frozen pytest -q
+          uv run --frozen python -c \
+            'import pathlib, yaml; [yaml.safe_load(path.read_text()) for path in pathlib.Path(".github").rglob("*.yml")]; yaml.safe_load(pathlib.Path("CITATION.cff").read_text())'
+          uv build --package convert-supergnova
+          python -m venv /tmp/omnigwas-release-test
+          /tmp/omnigwas-release-test/bin/pip install --no-deps dist/*.whl
+          /tmp/omnigwas-release-test/bin/supergnova2csv \
+            analysis/05_auxiliary_tools/convert_supergnova/example/example_data.txt \
+            --output /tmp/supergnova-release-output.csv \
+            --quiet
+          cmp /tmp/supergnova-release-output.csv \
+            analysis/05_auxiliary_tools/convert_supergnova/example/expected_output.csv
+          python -c \
+            'import glob, zipfile; path=glob.glob("dist/*.whl")[0]; names=zipfile.ZipFile(path).namelist(); assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names), names'
+          (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS.txt)
+          (cd dist && sha256sum --check SHA256SUMS.txt)
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" dist/*
+          --verify-tag
+          --title "OmniGWAS ${GITHUB_REF_NAME}"
+          --notes-file "release-notes/${GITHUB_REF_NAME}.md"

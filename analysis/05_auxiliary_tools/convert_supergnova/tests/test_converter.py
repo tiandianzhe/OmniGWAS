@@ -1,14 +1,11 @@
 """Unit tests for SuperGNOVA converter."""
 
 import os
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from converter import SuperGNOVAConverter, convert_supergnova_to_csv
+from convert_supergnova import SuperGNOVAConverter, convert_supergnova_to_csv
 
 
 class TestSuperGNOVAConverter:
@@ -92,6 +89,39 @@ class TestSuperGNOVAConverter:
         with pytest.raises(FileNotFoundError):
             SuperGNOVAConverter("nonexistent_file.txt")
 
+    def test_repository_fixture_matches_expected_output(self, tmp_path):
+        """Keep the public validation fixture deterministic."""
+        module_root = Path(__file__).parent.parent
+        input_path = module_root / "example" / "example_data.txt"
+        expected_path = module_root / "example" / "expected_output.csv"
+        output_path = tmp_path / "output.csv"
+
+        SuperGNOVAConverter(str(input_path), str(output_path)).convert(
+            skip_warnings=True
+        )
+
+        assert output_path.read_bytes() == expected_path.read_bytes()
+
+    def test_formula_like_cells_are_skipped_but_signed_numbers_are_allowed(
+        self, tmp_path
+    ):
+        """Prevent active spreadsheet formulas without rejecting negative estimates."""
+        input_path = tmp_path / "input.txt"
+        output_path = tmp_path / "output.csv"
+        input_path.write_text(
+            "chr1 1 2 -0.5 +0.2 0.1 0.1 0.1 0.05 10\n"
+            "chr1 1 2 =HYPERLINK(unsafe) 0.2 0.1 0.1 0.1 0.05 10\n",
+            encoding="utf-8",
+        )
+
+        stats = SuperGNOVAConverter(str(input_path), str(output_path)).convert(
+            skip_warnings=True
+        )
+
+        assert stats["converted_lines"] == 1
+        assert stats["skipped_lines"] == 1
+        assert "=HYPERLINK" not in output_path.read_text(encoding="utf-8")
+
 
 class TestConvenienceFunction:
     """Test suite for the convert_supergnova_to_csv convenience function."""
@@ -119,3 +149,18 @@ class TestConvenienceFunction:
         assert "converted_lines" in stats
         assert "output_path" in stats
         assert stats["converted_lines"] == 2
+
+    def test_quiet_mode_never_echoes_rejected_input(self, tmp_path, capsys):
+        """Do not leak malformed source rows when warning output is suppressed."""
+        marker = "private-study-marker"
+        input_path = tmp_path / "input.txt"
+        input_path.write_text(f"{marker} only-two-fields\n", encoding="utf-8")
+
+        stats = convert_supergnova_to_csv(
+            str(input_path),
+            str(tmp_path / "output.csv"),
+            skip_warnings=True,
+        )
+
+        assert stats["skipped_lines"] == 1
+        assert marker not in capsys.readouterr().out

@@ -18,10 +18,8 @@ Output columns:
 """
 
 import csv
-import os
-import sys
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 
 class SuperGNOVAConverter:
@@ -29,6 +27,20 @@ class SuperGNOVAConverter:
 
     COLUMNS = ["chr", "start", "end", "rho", "corr", "h2_1", "h2_2", "var", "p", "m"]
     EXPECTED_COL_COUNT = 10
+
+    @staticmethod
+    def _looks_like_spreadsheet_formula(value: str) -> bool:
+        """Reject active spreadsheet formula prefixes while allowing signed numbers."""
+        if not value:
+            return False
+        if value[0] in {"=", "@"}:
+            return True
+        if value[0] in {"+", "-"}:
+            try:
+                float(value)
+            except ValueError:
+                return True
+        return False
 
     def __init__(self, txt_path: str, csv_path: Optional[str] = None):
         """
@@ -42,13 +54,16 @@ class SuperGNOVAConverter:
             Path to the output CSV file. If None, replaces .txt with .csv.
         """
         self.txt_path = Path(txt_path)
-        if not self.txt_path.exists():
+        if not self.txt_path.is_file():
             raise FileNotFoundError(f"Input file not found: {self.txt_path}")
 
         if csv_path:
             self.csv_path = Path(csv_path)
         else:
             self.csv_path = self.txt_path.with_suffix(".csv")
+
+        if self.txt_path.resolve() == self.csv_path.resolve():
+            raise ValueError("Input and output paths must be different")
 
         self.skipped_lines: List[Tuple[int, str]] = []
         self.total_lines = 0
@@ -73,23 +88,33 @@ class SuperGNOVAConverter:
         self.total_lines = 0
         self.converted_lines = 0
 
-        with open(self.txt_path, "r", encoding="utf-8") as txt_file, \
-             open(self.csv_path, "w", newline="", encoding="utf-8") as csv_file:
+        self.csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-            writer = csv.writer(csv_file)
+        with self.txt_path.open("r", encoding="utf-8") as txt_file, \
+             self.csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+
+            writer = csv.writer(csv_file, lineterminator="\n")
             writer.writerow(self.COLUMNS)
 
             for line_num, line in enumerate(txt_file, start=1):
                 self.total_lines += 1
                 data = line.strip().split()
 
-                if len(data) == self.EXPECTED_COL_COUNT:
+                rejection_reason = None
+                if len(data) != self.EXPECTED_COL_COUNT:
+                    rejection_reason = (
+                        f"expected {self.EXPECTED_COL_COUNT} fields, found {len(data)}"
+                    )
+                elif any(self._looks_like_spreadsheet_formula(value) for value in data):
+                    rejection_reason = "contains a spreadsheet-formula-like field"
+
+                if rejection_reason is None:
                     writer.writerow(data)
                     self.converted_lines += 1
                 else:
-                    self.skipped_lines.append((line_num, line.strip()))
+                    self.skipped_lines.append((line_num, rejection_reason))
                     if not skip_warnings:
-                        print(f"Warning: Skipping malformed line {line_num}: {line.strip()[:80]}")
+                        print(f"Warning: Skipping line {line_num}: {rejection_reason}")
 
         return self.get_stats()
 
@@ -103,7 +128,7 @@ class SuperGNOVAConverter:
             "input_path": str(self.txt_path),
         }
 
-    def print_report(self) -> None:
+    def print_report(self, include_skipped_details: bool = True) -> None:
         """Print a formatted conversion report."""
         stats = self.get_stats()
         print("\n" + "=" * 50)
@@ -116,10 +141,10 @@ class SuperGNOVAConverter:
         print(f"Skipped    : {stats['skipped_lines']}")
         print("=" * 50)
 
-        if self.skipped_lines:
+        if self.skipped_lines and include_skipped_details:
             print("\nSkipped lines (first 5):")
-            for line_num, content in self.skipped_lines[:5]:
-                print(f"  Line {line_num}: {content[:80]}...")
+            for line_num, reason in self.skipped_lines[:5]:
+                print(f"  Line {line_num}: {reason}")
             if len(self.skipped_lines) > 5:
                 print(f"  ... and {len(self.skipped_lines) - 5} more")
 
@@ -145,28 +170,5 @@ def convert_supergnova_to_csv(txt_path: str, csv_path: Optional[str] = None,
     """
     converter = SuperGNOVAConverter(txt_path, csv_path)
     stats = converter.convert(skip_warnings=skip_warnings)
-    converter.print_report()
+    converter.print_report(include_skipped_details=not skip_warnings)
     return stats
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Convert SuperGNOVA TXT results to CSV format."
-    )
-    parser.add_argument("input", help="Input TXT file path")
-    parser.add_argument("-o", "--output", help="Output CSV file path", default=None)
-    parser.add_argument("-q", "--quiet", action="store_true",
-                        help="Suppress warnings for malformed rows")
-
-    args = parser.parse_args()
-
-    try:
-        convert_supergnova_to_csv(args.input, args.output, skip_warnings=args.quiet)
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)

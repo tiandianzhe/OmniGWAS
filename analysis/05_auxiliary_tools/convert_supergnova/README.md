@@ -1,76 +1,101 @@
 # convert_supergnova
 
-Convert [SuperGNOVA](https://github.com/yanqiliu1995/Supergnova) TXT output files to structured CSV format for downstream GWAS analysis.
+Version 0.1.0
 
-## Features
+`convert_supergnova` converts whitespace-delimited SuperGNOVA result rows to a deterministic CSV representation. It is a maintained Python package in OmniGWAS.
 
-- Convert SuperGNOVA TXT output to properly formatted CSV
-- Preserve all 10 output columns: chr, start, end, rho, corr, h2_1, h2_2, var, p, m
-- Skip malformed rows with detailed warnings
-- Batch conversion support for multiple files
-- Programmatic API for integration into pipelines
+## Data contract
 
-## Installation
+Each input row must contain exactly these 10 fields:
 
-```bash
-# From source
-git clone https://github.com/tiandianzhe/OmniGWAS.git
-cd OmniGWAS/convert_supergnova
-pip install -e .
+| Position | CSV column |
+| --- | --- |
+| 1 | `chr` |
+| 2 | `start` |
+| 3 | `end` |
+| 4 | `rho` |
+| 5 | `corr` |
+| 6 | `h2_1` |
+| 7 | `h2_2` |
+| 8 | `var` |
+| 9 | `p` |
+| 10 | `m` |
 
-# Or install directly
-pip install .
+The converter writes this fixed header and preserves the 10 field values as text. Rows with any other field count are skipped and reported without echoing source contents. Fields that could become active formulas when a CSV is opened in spreadsheet software are also rejected, while ordinary signed numeric values remain valid. The converter does not infer or validate scientific units.
+
+## Reproducible setup
+
+Run the locked project setup from the repository root:
+
+```sh
+uv sync --locked --all-groups
+Rscript -e 'renv::restore(prompt=FALSE)'
 ```
 
-## Quick Start
+The converter itself is Python-only. Restoring the R lock also prepares the complete maintained OmniGWAS test environment.
 
-### Python API
+## Command line
+
+Run source-tree module commands from `analysis/05_auxiliary_tools`:
+
+```sh
+cd analysis/05_auxiliary_tools
+
+../../.venv/bin/python -m convert_supergnova.src \
+  convert_supergnova/example/example_data.txt \
+  --output converted.csv \
+  --quiet
+```
+
+Batch conversion processes `*.txt` files:
+
+```sh
+../../.venv/bin/python -m convert_supergnova.src \
+  --batch path/to/input_dir \
+  --out path/to/output_dir
+```
+
+## Python API
 
 ```python
-from convert_supergnova import convert_supergnova_to_csv
+from convert_supergnova import SuperGNOVAConverter, convert_supergnova_to_csv
 
-# Convert a single file
 stats = convert_supergnova_to_csv(
-    txt_path="results.txt",
-    csv_path="results.csv"
+    "results.txt",
+    "results.csv",
+    skip_warnings=True,
 )
-# Conversion Report
-# Total rows : 1000
-# Converted  : 998
-# Skipped    : 2
+
+converter = SuperGNOVAConverter("results.txt", "results.csv")
+stats = converter.convert(skip_warnings=True)
 ```
 
-### Command Line
+The returned mapping reports `total_lines`, `converted_lines`, `skipped_lines`, `input_path`, and `output_path`.
 
-```bash
-# Single file
-python -m src.cli input.txt -o output.csv
+## Public deterministic fixture
 
-# Batch conversion
-python -m src.cli --batch input_dir --out output_dir
+The tracked input and expected output provide a public validation path:
 
-# Install as command (after pip install)
-supergnova2csv input.txt -o output.csv
+```sh
+cd analysis/05_auxiliary_tools
+
+../../.venv/bin/python -m convert_supergnova.src \
+  convert_supergnova/example/example_data.txt \
+  --output external-validation.csv \
+  --quiet
+
+cmp external-validation.csv convert_supergnova/example/expected_output.csv
+shasum -a 256 external-validation.csv
 ```
 
-## Output Columns
+Expected SHA-256:
 
-| Column | Description |
-|--------|-------------|
-| chr    | Chromosome number |
-| start  | Region start position (bp) |
-| end    | Region end position (bp) |
-| rho    | Genetic correlation coefficient |
-| corr   | Correlation estimate |
-| h2_1   | Heritability estimate for trait 1 |
-| h2_2   | Heritability estimate for trait 2 |
-| var    | Variance estimate |
-| p      | P-value for significance test |
-| m      | Number of SNPs in the region |
+```text
+695cdafed2fe4c6b84e0ce099e865a7a519daef9d4414be32ee53543eb558242
+```
 
-## Citation
+The fixture comparison is covered by the package tests. It verifies deterministic file conversion, not the scientific validity of upstream SuperGNOVA estimates.
 
-If you use this tool in your research, please cite:
+## License
 
-- Liu Y, et al. SuperGNOVA: dissecting genetic covariance across the human phenome. *bioRxiv* (2024).
-- OmniGWAS: https://github.com/tiandianzhe/OmniGWAS
+This module is part of OmniGWAS and uses the repository MIT license. SuperGNOVA remains an independent upstream project with its own license and citation requirements.

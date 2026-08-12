@@ -6,7 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `multiomics_gwas.R` | 多组学GWAS分析完整代码 |
+| `multiomics_gwas.R` | Markdown 格式的研究流程参考，不是可直接 `source()` 的 R 模块 |
 
 ## 功能分类
 
@@ -38,17 +38,7 @@
 
 ## 使用方法
 
-```r
-# 加载多组学分析函数
-source("analysis/02_multiomics_gwas/multiomics_gwas.R")
-
-# 示例：TWAS分析
-easyGWAS:::SPrediXcan_model(
-  filename = "path/to/GWAS.rds",
-  trait_name = "Trait",
-  model = "UTMOST"
-)
-```
+请把 `multiomics_gwas.R` 作为研究 recipe 阅读。选择所需的 fenced R 代码块，逐项审核依赖版本、上游模型、数据来源、网络访问、凭证、路径与统计假设后，再复制到独立分析脚本中执行。不要对该文件运行 `source()`，也不要直接执行其中的安装或下载操作。
 
 ## 依赖
 

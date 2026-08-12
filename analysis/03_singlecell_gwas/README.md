@@ -6,7 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `singlecell_gwas.R` | 单细胞GWAS分析完整代码 |
+| `singlecell_gwas.R` | Markdown 格式的研究流程参考，不是可直接 `source()` 的 R 模块 |
 
 ## 功能分类
 
@@ -37,18 +37,7 @@
 
 ## 使用方法
 
-```r
-# 加载单细胞分析函数
-source("analysis/03_singlecell_gwas/singlecell_gwas.R")
-
-# 示例：单细胞SMR分析
-easyGWAS::batch_xqtl_smr(
-  out_filename = "path/to/GWAS.rds",
-  outcome_name = "Trait",
-  xqtl_resource = "TN_0h",
-  xqtl_type = "sc_eqtl"
-)
-```
+请把 `singlecell_gwas.R` 作为研究 recipe 阅读。选择所需的 fenced R 代码块，逐项审核依赖版本、单细胞或 xQTL 资源、数据来源、网络访问、路径与统计假设后，再复制到独立分析脚本中执行。不要对该文件运行 `source()`。
 
 ## 依赖
 

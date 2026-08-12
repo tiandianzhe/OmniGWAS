@@ -1,0 +1,24 @@
+Package: OmniGWAS
+Type: Project
+Title: Reproducible GWAS Analysis Recipes and Auxiliary Tools
+Version: 0.1.0
+Authors@R: person("Dianzhe", "Tian", email = "tiandianzhe@outlook.com",
+    role = c("aut", "cre"), comment = c(ORCID = "0009-0006-3618-9054"))
+Description: Development metadata for the tested OmniGWAS R utility layer.
+    Heavy analysis packages and external datasets remain optional and are not
+    included in the core lockfile.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    data.table,
+    dplyr,
+    ggplot2,
+    ggrepel,
+    jsonlite,
+    scales,
+    stringr,
+    testthat,
+    writexl,
+    yaml
+Suggests:
+    renv

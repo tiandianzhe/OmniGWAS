@@ -1,7 +1,7 @@
 #' ---
 #' title: Manhattan Plot Module for GWAS Results Visualization
 #' description: Generate publication-ready Manhattan plots from GWAS summary statistics
-#' author: WorkBuddy AI Assistant
+#' author: OmniGWAS contributors
 #' date: 2026-04-08
 #' ---
 
@@ -10,16 +10,29 @@
 # Main function for generating Manhattan plots
 # ============================================
 
-#' Install and Load Required Packages
+#' Require Project Packages
 #' @param pkgs Character vector of package names
-#' @return NULL (packages are loaded in the environment)
-install_and_load <- function(pkgs) {
-  for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) {
-      install.packages(p, repos = "https://cloud.r-project.org")
-    }
+#' @return NULL
+require_packages <- function(pkgs) {
+  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing) > 0) {
+    stop(
+      "Missing required R packages: ",
+      paste(missing, collapse = ", "),
+      ". Restore dependencies from renv.lock."
+    )
   }
-  invisible(lapply(pkgs, library, character.only = TRUE))
+  invisible(NULL)
+}
+
+
+coerce_numeric_column <- function(values, column_name) {
+  numeric_values <- suppressWarnings(as.numeric(as.character(values)))
+  if (length(numeric_values) == 0 || any(is.na(numeric_values)) ||
+      any(!is.finite(numeric_values))) {
+    stop(column_name, " must contain only finite numeric values")
+  }
+  numeric_values
 }
 
 #' Create Manhattan Plot
@@ -31,7 +44,7 @@ install_and_load <- function(pkgs) {
 #' @param threshold_type "pvalue" or "fdr" (default: "fdr")
 #' @param color_palette Color palette for chromosomes (default: rainbow gradient)
 #' @param label_snps Vector of SNP IDs to label (default: significant SNPs)
-#' @param genomewideline Add genome-wide significance line (default: TRUE)
+#' @param genomewideline Add the conventional P=5e-8 line in p-value mode
 #' @param suggestiveline Add suggestive line (default: TRUE)
 #' @param title Plot title (default: "Manhattan Plot")
 #' @param width Plot width (default: 12)
@@ -67,48 +80,81 @@ create_manhattan_plot <- function(
     base_family = "Arial"
 ) {
 
-  # Install and load required packages
-  install_and_load(c("data.table", "dplyr", "ggplot2", "ggrepel", "scales"))
+  require_packages(c("data.table", "dplyr", "ggplot2", "ggrepel", "scales"))
+
+  if (!threshold_type %in% c("pvalue", "fdr")) {
+    stop("threshold_type must be 'pvalue' or 'fdr'")
+  }
+  if (!is.numeric(threshold) || length(threshold) != 1 ||
+      is.na(threshold) || threshold <= 0 || threshold > 1) {
+    stop("threshold must be in the interval (0, 1]")
+  }
 
   # Data validation
-  required_cols <- c("SNP", "CHR", "BP")
-  if (!pval_col %in% names(data) && is.null(fdr_col)) {
-    stop("Either pval_col or fdr_col must be present in data")
+  required_cols <- unique(c("SNP", "CHR", "BP", pval_col))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  if (!is.null(fdr_col) && !fdr_col %in% names(data)) {
+    stop("FDR column not found: ", fdr_col)
   }
 
   # Prepare data
   df <- data.table::as.data.table(data)
-  df$CHR <- as.numeric(df$CHR)
+  if (any(is.na(df$SNP)) || any(!nzchar(as.character(df$SNP)))) {
+    stop("SNP must contain non-empty identifiers")
+  }
+  df$CHR <- coerce_numeric_column(df$CHR, "CHR")
+  df$BP <- coerce_numeric_column(df$BP, "BP")
+  if (any(df$CHR <= 0) || any(df$CHR != floor(df$CHR))) {
+    stop("CHR must contain positive whole numbers")
+  }
+  if (any(df$BP <= 0) || any(df$BP != floor(df$BP))) {
+    stop("BP must contain positive whole-number positions")
+  }
 
-  # Calculate -log10(P) or use FDR
-  if (!is.null(fdr_col) && fdr_col %in% names(df)) {
-    df$FDR <- df[[fdr_col]]
-    df$FDR[df$FDR == 0] <- 1e-300
+  # Prepare P and FDR values, then plot the selected threshold scale.
+  df$P <- coerce_numeric_column(df[[pval_col]], pval_col)
+  if (any(df$P < 0 | df$P > 1)) {
+    stop(pval_col, " must contain values in the interval [0, 1]")
+  }
+  df$P[df$P == 0] <- 1e-300
+  if (!is.null(fdr_col)) {
+    df$FDR <- coerce_numeric_column(df[[fdr_col]], fdr_col)
+    if (any(df$FDR < 0 | df$FDR > 1)) {
+      stop(fdr_col, " must contain values in the interval [0, 1]")
+    }
+  } else {
+    df$FDR <- stats::p.adjust(df$P, method = "BH")
+  }
+  df$FDR[df$FDR == 0] <- 1e-300
+
+  if (threshold_type == "fdr") {
     df$logP <- -log10(df$FDR)
     y_label <- expression(-log[10](FDR))
   } else {
-    df$P <- df[[pval_col]]
-    df$P[df$P == 0] <- 1e-300
     df$logP <- -log10(df$P)
     y_label <- expression(-log[10](P))
   }
 
-  # Remove NAs and order
-  df <- df[!is.na(CHR) & !is.na(BP)]
+  # Order validated rows
   df <- df[order(CHR, BP)]
 
   # Calculate cumulative positions
-  chr_info <- df %>%
-    dplyr::group_by(CHR) %>%
-    dplyr::summarise(chr_len = max(as.numeric(BP), na.rm = TRUE), .groups = "drop") %>%
-    dplyr::arrange(CHR) %>%
-    dplyr::mutate(chr_start = lag(cumsum(as.numeric(chr_len)), default = 0))
+  chr_info <- df |>
+    dplyr::group_by(CHR) |>
+    dplyr::summarise(chr_len = max(as.numeric(BP), na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(CHR) |>
+    dplyr::mutate(
+      chr_start = dplyr::lag(cumsum(as.numeric(chr_len)), default = 0)
+    )
 
-  df <- df %>%
-    dplyr::left_join(chr_info, by = "CHR") %>%
-    dplyr::mutate(BP_cum = BP + chr_start)
+  df <- df |>
+    dplyr::left_join(chr_info, by = "CHR") |>
+    dplyr::mutate(BP_cum = as.numeric(BP) + chr_start)
 
-  axis_df <- chr_info %>%
+  axis_df <- chr_info |>
     dplyr::mutate(center = chr_start + chr_len / 2)
 
   # Determine significance column and threshold
@@ -215,7 +261,28 @@ create_manhattan_plot <- function(
       panel.grid.minor = ggplot2::element_blank()
     )
 
+  if (threshold_type == "pvalue" && genomewideline) {
+    p <- p + ggplot2::geom_hline(
+      yintercept = -log10(5e-8),
+      linetype = 3,
+      linewidth = 0.4,
+      color = "#B2182B"
+    )
+  }
+  if (threshold_type == "pvalue" && suggestiveline) {
+    p <- p + ggplot2::geom_hline(
+      yintercept = -log10(1e-5),
+      linetype = 3,
+      linewidth = 0.4,
+      color = "#636363"
+    )
+  }
+
   # Save plot
+  output_dir <- dirname(output)
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
   ggplot2::ggsave(
     filename = output,
     plot = p,
@@ -253,11 +320,17 @@ create_qq_plot <- function(
     dpi = 300
 ) {
 
-  install_and_load(c("ggplot2", "data.table"))
+  require_packages(c("ggplot2", "data.table"))
+
+  if (!pval_col %in% names(data)) {
+    stop("P-value column not found: ", pval_col)
+  }
 
   df <- data.table::as.data.table(data)
-  pvalues <- df[[pval_col]]
-  pvalues <- pvalues[!is.na(pvalues) & pvalues > 0]
+  pvalues <- coerce_numeric_column(df[[pval_col]], pval_col)
+  if (any(pvalues <= 0 | pvalues > 1)) {
+    stop(pval_col, " must contain values in the interval (0, 1]")
+  }
 
   n <- length(pvalues)
   obs_logp <- -log10(sort(pvalues))
@@ -269,7 +342,8 @@ create_qq_plot <- function(
   )
 
   # Calculate lambda (genomic inflation factor)
-  lambda <- median(qchisq(pvalues, df = 1, lower.tail = FALSE, log.p = TRUE)) / median(qchisq(0.5, df = 1, lower.tail = FALSE, log.p = TRUE))
+  lambda <- stats::median(stats::qchisq(pvalues, df = 1, lower.tail = FALSE)) /
+    stats::qchisq(0.5, df = 1, lower.tail = FALSE)
   lambda_text <- sprintf("lambda = %.3f", lambda)
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$expected, y = .data$observed)) +
@@ -289,6 +363,10 @@ create_qq_plot <- function(
       axis.title = ggplot2::element_text(color = "black")
     )
 
+  output_dir <- dirname(output)
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
   ggplot2::ggsave(output, p, width = width, height = height, dpi = dpi)
   message("QQ plot saved to: ", output)
   invisible(p)

@@ -84,9 +84,9 @@ rename_with_mapping <- function(data, mapping) {
   }
 
   # Rename using dplyr
-  data <- data %>%
-    dplyr::rename(!!!setNames(new_names[old_names %in% names(data)],
-                              old_names[old_names %in% names(data)]))
+  present <- old_names %in% names(data)
+  mapping <- stats::setNames(old_names[present], new_names[present])
+  data <- dplyr::rename(data, !!!mapping)
 
   return(data)
 }
@@ -108,6 +108,10 @@ rename_with_mapping <- function(data, mapping) {
 #' )
 #' }
 rename_values <- function(data, col_name, old_values, new_values) {
+
+  if (!requireNamespace("dplyr", quietly = TRUE)) {
+    stop("Package 'dplyr' is required. Restore dependencies from renv.lock.")
+  }
 
   if (!col_name %in% names(data)) {
     stop("Column '", col_name, "' not found in data")
@@ -138,7 +142,7 @@ rename_values <- function(data, col_name, old_values, new_values) {
 rename_with_str_replace <- function(data, col_name, pattern, replacement, ...) {
 
   if (!requireNamespace("stringr", quietly = TRUE)) {
-    stop("Package 'stringr' is required")
+    stop("Package 'stringr' is required. Restore dependencies from renv.lock.")
   }
 
   if (!col_name %in% names(data)) {
